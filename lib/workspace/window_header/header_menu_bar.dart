@@ -43,8 +43,19 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
   /// inside and does not close what that label opens.
   final Object _tapRegion = Object();
 
+  /// The open submenu's item, and its parents (for a nested one).
+  List<HeaderMenuItem> _submenuPath = [];
+
+  // Items are rebuilt as the menu opens (what is ticked changes), so the
+  // path is matched by label, not by identity.
+  bool _isSubmenuOpen(HeaderMenuItem item) =>
+      _submenuPath.isNotEmpty && _submenuPath.last.label == item.label;
+
   void _openMenu(HeaderMenu menu) {
-    setState(() => _open = menu);
+    setState(() {
+      _open = menu;
+      _submenuPath.clear();
+    });
     // Esc puts them away; the focused input asks the registry first (see
     // FloatingRegistry.handleKey).
     FloatingRegistry.openPopover(this, _close, onKey: _handleKey);
@@ -60,8 +71,14 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
     setState(() {
       _open = null;
       _listOpen = false;
+      _submenuPath.clear();
     });
     FloatingRegistry.closePopover(this);
+  }
+
+  void _openSubmenu(HeaderMenuItem item) {
+    if (_isSubmenuOpen(item)) return;
+    setState(() => _submenuPath = [item]);
   }
 
   @override
@@ -198,22 +215,47 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
   }
 
   /// The menu's commands.
-  Widget _buildCommands(HeaderMenu menu) => _panel(
-    width: 224,
-    children: [
-      for (final item in widget.items(menu))
-        if (item.rule)
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-            child: SizedBox(
-              height: 1,
-              child: ColoredBox(color: themeColors['menu.separatorBackground']),
+  Widget _buildCommands(HeaderMenu menu) =>
+      _buildPanel(widget.items(menu));
+
+  /// A panel of entries, each command or a submenu that opens to its right.
+  Widget _buildPanel(List<HeaderMenuItem> items, {bool nested = false}) {
+    return _panel(
+      width: 224,
+      children: [
+        for (final item in items)
+          if (item.rule)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: SizedBox(
+                height: 1,
+                child: ColoredBox(
+                  color: themeColors['menu.separatorBackground'],
+                ),
+              ),
+            )
+          else if (item.submenu case final submenu?)
+            _SubmenuRow(
+              item: item,
+              selected: _isSubmenuOpen(item),
+              panel: (context) => _buildPanel(submenu, nested: true),
+              onEnter: () => _openSubmenu(item),
+              onSelected: () => _openSubmenu(item),
+              tapRegion: _tapRegion,
+            )
+          else
+            _MenuRow(
+              item: item,
+              onSelected: nested ? _selectNested : _select,
             ),
-          )
-        else
-          _MenuRow(item: item, onSelected: _select),
-    ],
-  );
+      ],
+    );
+  }
+
+  void _selectNested(HeaderMenuItem item) {
+    _close();
+    item.onSelected?.call();
+  }
 
   /// A panel of the same make as the app's other menus (see SidebarMenu).
   Widget _panel({required double width, required List<Widget> children}) {
@@ -326,6 +368,46 @@ class _MenuRow extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// A command that opens a submenu beside it as the pointer rests on it or it
+/// is tapped (the folded bar's [HeaderMenu] entries do the same).
+class _SubmenuRow extends StatelessWidget {
+  const _SubmenuRow({
+    required this.item,
+    required this.selected,
+    required this.panel,
+    required this.onEnter,
+    required this.onSelected,
+    required this.tapRegion,
+  });
+
+  final HeaderMenuItem item;
+  final bool selected;
+  final WidgetBuilder panel;
+  final VoidCallback onEnter;
+  final VoidCallback onSelected;
+  final Object tapRegion;
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingLayer(
+      visible: selected,
+      placement: (side: FloatingSide.right, align: FloatingAlign.start),
+      gap: 6,
+      tapRegionGroupId: tapRegion,
+      builder: panel,
+      child: MouseRegion(
+        onEnter: (_) => onEnter(),
+        child: _MenuRow(
+          item: item,
+          selected: selected,
+          submenu: true,
+          onSelected: (_) => onSelected(),
+        ),
+      ),
     );
   }
 }

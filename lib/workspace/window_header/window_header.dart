@@ -29,6 +29,7 @@ import '../pin_window_button.dart';
 import '../window_controls.dart';
 import '../workspace.dart';
 import 'about_dialog.dart';
+import 'git_menu.dart' show GitMenuActions, gitMenuItems;
 import 'header_menu.dart';
 import 'header_menu_bar.dart';
 import 'window_buttons.dart';
@@ -77,9 +78,14 @@ class WindowHeader extends StatefulWidget {
     this.compact = false,
     this.title,
     this.settingsShown = false,
+    this.gitActions,
   });
 
   final Workspace workspace;
+
+  /// What the Git menu offers, read when it opens; null when the window
+  /// has no Git to work with.
+  final GitMenuActions? Function()? gitActions;
 
   /// The project the session works in, for opening it in an editor; null
   /// before there is one.
@@ -769,6 +775,10 @@ class _WindowHeaderState extends State<WindowHeader> {
           onSelected: widget.onToggleContextPanel,
         ),
       ],
+      HeaderMenu.git => gitMenuItems(
+        l10n,
+        widget.gitActions?.call() ?? const GitMenuActions(),
+      ),
       HeaderMenu.help => [
         HeaderMenuItem(
           l10n.menuAboutBaoCode,

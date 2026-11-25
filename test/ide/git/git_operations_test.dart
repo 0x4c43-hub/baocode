@@ -173,6 +173,25 @@ void main() {
       expect(git.callsTo('fetch').last, ['fetch', '--all', '--tags']);
     });
 
+    test('Fetch (Prune) and Fetch (Delete) pass the prune flags', () async {
+      await service.fetch(prune: true);
+      expect(git.callsTo('fetch').last, [
+        'fetch',
+        '--all',
+        '--tags',
+        '--prune',
+      ]);
+
+      await service.fetch(remote: 'origin', prune: true, pruneTags: true);
+      expect(git.callsTo('fetch').last, [
+        'fetch',
+        'origin',
+        '--tags',
+        '--prune',
+        '--prune-tags',
+      ]);
+    });
+
     test('the repository fetches, pulls and pushes its upstream', () async {
       final repository = IdeGitRepository(
         IdeGitService(git.root, runner: git.run),
@@ -189,6 +208,50 @@ void main() {
 
       await repository.push();
       expect(git.callsTo('push').single, ['push', 'origin', 'main:main']);
+    });
+
+    test('the Pull, Push submenu operations rebase and force with lease',
+        () async {
+      final repository = IdeGitRepository(
+        IdeGitService(git.root, runner: git.run),
+        refreshDelay: Duration.zero,
+      );
+      addTearDown(repository.dispose);
+      await repository.refresh();
+
+      await repository.pullRebase();
+      expect(git.callsTo('pull').last, [
+        'pull',
+        '--rebase',
+        '--autostash',
+        'origin',
+        'main',
+      ]);
+
+      await repository.pullFrom('upstream', 'develop');
+      expect(git.callsTo('pull').last, [
+        'pull',
+        '--no-rebase',
+        '--autostash',
+        'upstream',
+        'develop',
+      ]);
+
+      await repository.pushForce();
+      expect(git.callsTo('push').last, [
+        'push',
+        '--force-with-lease',
+        'origin',
+        'main:main',
+      ]);
+
+      await repository.pushToForce('other', 'main');
+      expect(git.callsTo('push').last, [
+        'push',
+        '--force-with-lease',
+        'other',
+        'main:main',
+      ]);
     });
 
     test('pull and push without an upstream fail with a message', () async {

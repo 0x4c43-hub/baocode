@@ -3589,6 +3589,7 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       autoSave: _autoSaveOn,
       compact: _narrow,
       settingsShown: _settingsOpen,
+      gitActions: () => _ide?.gitMenuActions(_cloneRepository),
       title: _titleInHeader
           ? (agent ?? _workspace.current)?.localizedTitle(context.l10n)
           : null,

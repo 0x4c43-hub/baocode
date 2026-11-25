@@ -2807,6 +2807,12 @@ abstract class AppLocalizations {
   /// Menu bar menu.
   ///
   /// In en, this message translates to:
+  /// **'Git'**
+  String get menuGit;
+
+  /// Menu bar menu.
+  ///
+  /// In en, this message translates to:
   /// **'Edit'**
   String get menuEdit;
 
@@ -23634,6 +23640,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'“{name}” already exists. Replace it?'**
   String remoteBrowserReplace(String name);
+
+  /// No description provided for @gitMenuSync.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync'**
+  String get gitMenuSync;
+
+  /// No description provided for @gitMenuClone.
+  ///
+  /// In en, this message translates to:
+  /// **'Clone'**
+  String get gitMenuClone;
+
+  /// No description provided for @gitMenuCheckout.
+  ///
+  /// In en, this message translates to:
+  /// **'Checkout to…'**
+  String get gitMenuCheckout;
+
+  /// No description provided for @gitMenuCommit.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit'**
+  String get gitMenuCommit;
+
+  /// No description provided for @gitMenuCommitChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Commit Changes…'**
+  String get gitMenuCommitChanges;
+
+  /// No description provided for @gitMenuChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes'**
+  String get gitMenuChanges;
+
+  /// No description provided for @gitMenuUpdateProject.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Project'**
+  String get gitMenuUpdateProject;
+
+  /// No description provided for @gitMenuPullPush.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull, Push'**
+  String get gitMenuPullPush;
+
+  /// No description provided for @gitMenuPullRebase.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull (Rebase)'**
+  String get gitMenuPullRebase;
+
+  /// No description provided for @gitMenuPullFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull from…'**
+  String get gitMenuPullFrom;
+
+  /// No description provided for @gitMenuPushForce.
+  ///
+  /// In en, this message translates to:
+  /// **'Push (Force)'**
+  String get gitMenuPushForce;
+
+  /// No description provided for @gitMenuPushTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Push to…'**
+  String get gitMenuPushTo;
+
+  /// No description provided for @gitMenuPushToForce.
+  ///
+  /// In en, this message translates to:
+  /// **'Push to… (Force)'**
+  String get gitMenuPushToForce;
+
+  /// No description provided for @gitMenuFetchPrune.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch (Prune)'**
+  String get gitMenuFetchPrune;
+
+  /// No description provided for @gitMenuFetchDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch (Delete)'**
+  String get gitMenuFetchDelete;
+
+  /// No description provided for @gitMenuFetchAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch from All Remotes'**
+  String get gitMenuFetchAll;
+
+  /// No description provided for @gitMenuBranches.
+  ///
+  /// In en, this message translates to:
+  /// **'Branches'**
+  String get gitMenuBranches;
+
+  /// No description provided for @gitMenuRemotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Remotes'**
+  String get gitMenuRemotes;
+
+  /// No description provided for @gitMenuStash.
+  ///
+  /// In en, this message translates to:
+  /// **'Stash'**
+  String get gitMenuStash;
+
+  /// No description provided for @gitMenuTags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get gitMenuTags;
+
+  /// No description provided for @gitMenuWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Worktree'**
+  String get gitMenuWorktree;
+
+  /// No description provided for @gitMenuShowOutput.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Git Output'**
+  String get gitMenuShowOutput;
+
+  /// No description provided for @gitMenuNoRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no remote to work with.'**
+  String get gitMenuNoRemote;
+
+  /// No description provided for @gitMenuPickRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a remote'**
+  String get gitMenuPickRemote;
+
+  /// No description provided for @gitMenuPickBranch.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a branch'**
+  String get gitMenuPickBranch;
+
+  /// No description provided for @gitMenuNewWorktree.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Worktree'**
+  String get gitMenuNewWorktree;
 }
 
 class _AppLocalizationsDelegate

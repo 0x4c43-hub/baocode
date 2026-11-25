@@ -15,10 +15,12 @@ import '../theme/app_theme.dart';
 import '../workspace/editor_launcher.dart';
 import '../workspace/islands.dart';
 import '../workspace/window_controls.dart';
+import '../workspace/window_header/git_menu.dart' show GitMenuActions;
 import '../workspace/workspace.dart';
 import 'extensions/ide_extensions.dart';
 import 'file_service.dart' show localizedFileError;
 import 'git/commit_message.dart';
+import 'git/git_menu_actions.dart' show ideGitMenuActions;
 import 'git/git_repository.dart';
 import 'host_paths.dart';
 import 'ide_agent_edits.dart';
@@ -763,6 +765,15 @@ class IdeWorkbenchState extends State<IdeWorkbench> {
   /// Runs the command [id] (the palette's, or one of its keybindings'),
   /// as a menu does; false when there is none here, or it cannot run now.
   bool runCommand(String id) => _commands.runById(id);
+
+  /// What the header's Git menu offers for this window. [clone] is the
+  /// app's (it opens the cloned folder); the rest work on the Source
+  /// Control repository and its Git service.
+  GitMenuActions gitMenuActions(VoidCallback clone) => ideGitMenuActions(
+    context: context,
+    scm: _scmService,
+    clone: clone,
+  );
 
   // --- Keybindings ---------------------------------------------------------
 

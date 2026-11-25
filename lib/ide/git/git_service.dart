@@ -150,6 +150,10 @@ class IdeGitService {
   /// be watched.
   Stream<String> watch(String repositoryRoot) => _watch(repositoryRoot);
 
+  /// Runs Git with [arguments] and returns its output, for a Git Output
+  /// dialog that shows what Git says first-hand.
+  Future<IdeGitOutput> run(List<String> arguments) => _git(arguments);
+
   Future<IdeGitOutput> _git(
     List<String> arguments, {
     String? cwd,
@@ -912,11 +916,24 @@ class IdeGitService {
   }
 
   /// `git fetch <remote> --tags` for one remote, or `git fetch --all
-  /// --tags` for every remote (`git.fetch`/`git.fetchAll`).
-  Future<void> fetch({String? remote}) async {
+  /// --tags` for every remote (`git.fetch`/`git.fetchAll`). [prune] drops
+  /// remote-tracking refs gone from the remote; [pruneTags] drops tags the
+  /// remote no longer has (Fetch's Prune and Delete variants).
+  Future<void> fetch({
+    String? remote,
+    bool prune = false,
+    bool pruneTags = false,
+  }) async {
     await _requireRoot();
     _check(
-      await _git(['fetch', ?remote, if (remote == null) '--all', '--tags']),
+      await _git([
+        'fetch',
+        ?remote,
+        if (remote == null) '--all',
+        '--tags',
+        if (prune) '--prune',
+        if (pruneTags) '--prune-tags',
+      ]),
       remote == null ? 'Cannot fetch from all remotes.' : 'Cannot fetch.',
     );
   }

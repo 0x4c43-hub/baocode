@@ -1429,6 +1429,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuFile => 'File';
 
   @override
+  String get menuGit => 'Git';
+
+  @override
   String get menuEdit => 'Edit';
 
   @override
@@ -14608,4 +14611,82 @@ class AppLocalizationsEn extends AppLocalizations {
   String remoteBrowserReplace(String name) {
     return '“$name” already exists. Replace it?';
   }
+
+  @override
+  String get gitMenuSync => 'Sync';
+
+  @override
+  String get gitMenuClone => 'Clone';
+
+  @override
+  String get gitMenuCheckout => 'Checkout to…';
+
+  @override
+  String get gitMenuCommit => 'Commit';
+
+  @override
+  String get gitMenuCommitChanges => 'Commit Changes…';
+
+  @override
+  String get gitMenuChanges => 'Changes';
+
+  @override
+  String get gitMenuUpdateProject => 'Update Project';
+
+  @override
+  String get gitMenuPullPush => 'Pull, Push';
+
+  @override
+  String get gitMenuPullRebase => 'Pull (Rebase)';
+
+  @override
+  String get gitMenuPullFrom => 'Pull from…';
+
+  @override
+  String get gitMenuPushForce => 'Push (Force)';
+
+  @override
+  String get gitMenuPushTo => 'Push to…';
+
+  @override
+  String get gitMenuPushToForce => 'Push to… (Force)';
+
+  @override
+  String get gitMenuFetchPrune => 'Fetch (Prune)';
+
+  @override
+  String get gitMenuFetchDelete => 'Fetch (Delete)';
+
+  @override
+  String get gitMenuFetchAll => 'Fetch from All Remotes';
+
+  @override
+  String get gitMenuBranches => 'Branches';
+
+  @override
+  String get gitMenuRemotes => 'Remotes';
+
+  @override
+  String get gitMenuStash => 'Stash';
+
+  @override
+  String get gitMenuTags => 'Tags';
+
+  @override
+  String get gitMenuWorktree => 'Worktree';
+
+  @override
+  String get gitMenuShowOutput => 'Show Git Output';
+
+  @override
+  String get gitMenuNoRemote => 'There is no remote to work with.';
+
+  @override
+  String get gitMenuPickRemote => 'Pick a remote';
+
+  @override
+  String get gitMenuPickBranch => 'Pick a branch';
+
+  @override
+  String get gitMenuNewWorktree => 'Add Worktree';
 }

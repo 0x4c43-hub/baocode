@@ -653,9 +653,52 @@ class IdeGitRepository extends ChangeNotifier {
 
   /// Git: Fetch (`Repository.fetch`), or from every remote
   /// (`Repository.fetchAll`, which the title bar's Fetch From All Remotes
-  /// runs) when [remote] is null.
-  Future<void> fetch({String? remote}) =>
-      _operate(() => service.fetch(remote: remote));
+  /// runs) when [remote] is null. [prune] drops gone remote-tracking
+  /// branches; [pruneTags], gone remote tags.
+  Future<void> fetch({
+    String? remote,
+    bool prune = false,
+    bool pruneTags = false,
+  }) => _operate(
+    () => service.fetch(remote: remote, prune: prune, pruneTags: pruneTags),
+  );
+
+  /// Pull the current branch's upstream, rebasing the local commits onto
+  /// it instead of merging (Git: Pull (Rebase)).
+  Future<void> pullRebase() => _whileSyncing(() async {
+    final (remote, name) = await _upstream('pull');
+    await service.pullInto(remote, name, rebase: true);
+  });
+
+  /// Pull a remote and branch picked by the user into the current branch.
+  Future<void> pullFrom(String remote, String branch) =>
+      _whileSyncing(() => service.pullInto(remote, branch, rebase: false));
+
+  /// Force-push the current branch to its upstream, with lease.
+  Future<void> pushForce() => _whileSyncing(() async {
+    final branch = _state?.head.branch;
+    final (remote, name) = await _upstream('push');
+    await service.push(remote, '$branch:$name', forceWithLease: true);
+  });
+
+  /// Force-push the current branch to a remote and branch, with lease.
+  Future<void> pushToForce(
+    String remote,
+    String target, {
+    bool tags = false,
+  }) => _whileSyncing(() async {
+    final branch = _state?.head.branch;
+    if (branch == null) {
+      throw const IdeGitException('HEAD is on no branch: nothing to push.');
+    }
+    await service.push(
+      remote,
+      '$branch:$target',
+      setUpstream: _state?.head.upstream == null,
+      forceWithLease: true,
+      followTags: tags,
+    );
+  });
 
   /// Git: Pull (`Repository.pull`): pulls the branch's upstream. Throws
   /// when the branch has none (`Repository.pull`'s "no tracking

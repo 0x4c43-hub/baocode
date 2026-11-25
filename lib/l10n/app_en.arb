@@ -629,6 +629,10 @@
   "@menuView": {
     "description": "Menu bar menu."
   },
+  "menuGit": "Git",
+  "@menuGit": {
+    "description": "Menu bar menu."
+  },
   "menuHelp": "Help",
   "@menuHelp": {
     "description": "Menu bar menu."
@@ -9200,5 +9204,31 @@
   "remoteBrowserSaveName": "Save As:",
   "remoteBrowserSave": "Save",
   "remoteBrowserReplace": "“{name}” already exists. Replace it?",
-  "@remoteBrowserReplace": {"placeholders": {"name": {"type": "String"}}}
+  "@remoteBrowserReplace": {"placeholders": {"name": {"type": "String"}}},
+  "gitMenuSync": "Sync",
+  "gitMenuClone": "Clone",
+  "gitMenuCheckout": "Checkout to…",
+  "gitMenuCommit": "Commit",
+  "gitMenuCommitChanges": "Commit Changes…",
+  "gitMenuChanges": "Changes",
+  "gitMenuUpdateProject": "Update Project",
+  "gitMenuPullPush": "Pull, Push",
+  "gitMenuPullRebase": "Pull (Rebase)",
+  "gitMenuPullFrom": "Pull from…",
+  "gitMenuPushForce": "Push (Force)",
+  "gitMenuPushTo": "Push to…",
+  "gitMenuPushToForce": "Push to… (Force)",
+  "gitMenuFetchPrune": "Fetch (Prune)",
+  "gitMenuFetchDelete": "Fetch (Delete)",
+  "gitMenuFetchAll": "Fetch from All Remotes",
+  "gitMenuBranches": "Branches",
+  "gitMenuRemotes": "Remotes",
+  "gitMenuStash": "Stash",
+  "gitMenuTags": "Tags",
+  "gitMenuWorktree": "Worktree",
+  "gitMenuShowOutput": "Show Git Output",
+  "gitMenuNoRemote": "There is no remote to work with.",
+  "gitMenuPickRemote": "Pick a remote",
+  "gitMenuPickBranch": "Pick a branch",
+  "gitMenuNewWorktree": "Add Worktree"
 }

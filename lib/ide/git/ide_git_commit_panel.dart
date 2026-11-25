@@ -486,6 +486,10 @@ class IdeGitCommitPanelState extends State<IdeGitCommitPanel>
 
   Future<void> commit() => _commit();
 
+  /// Commit and Push: the Commit button held Shift; the same review,
+  /// validation and selected files, then a push of what was committed.
+  Future<void> commitAndPush() => _commit(push: true);
+
   Future<void> fetch() async => _run(() async => _git?.fetch());
 
   Future<void> fetchAll() => _run(() async {

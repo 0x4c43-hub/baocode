@@ -1392,6 +1392,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get menuFile => '文件';
 
   @override
+  String get menuGit => 'Git';
+
+  @override
   String get menuEdit => '编辑';
 
   @override
@@ -13790,4 +13793,82 @@ class AppLocalizationsZh extends AppLocalizations {
   String remoteBrowserReplace(String name) {
     return '“$name”已存在，要替换它吗？';
   }
+
+  @override
+  String get gitMenuSync => '同步';
+
+  @override
+  String get gitMenuClone => '克隆';
+
+  @override
+  String get gitMenuCheckout => '签出到…';
+
+  @override
+  String get gitMenuCommit => '提交';
+
+  @override
+  String get gitMenuCommitChanges => '提交更改…';
+
+  @override
+  String get gitMenuChanges => '更改';
+
+  @override
+  String get gitMenuUpdateProject => '更新项目';
+
+  @override
+  String get gitMenuPullPush => '拉取，推送';
+
+  @override
+  String get gitMenuPullRebase => '拉取（变基）';
+
+  @override
+  String get gitMenuPullFrom => '拉取自…';
+
+  @override
+  String get gitMenuPushForce => '推送（强制）';
+
+  @override
+  String get gitMenuPushTo => '推送到…';
+
+  @override
+  String get gitMenuPushToForce => '推送到…（强制）';
+
+  @override
+  String get gitMenuFetchPrune => '抓取（清理）';
+
+  @override
+  String get gitMenuFetchDelete => '抓取（删除）';
+
+  @override
+  String get gitMenuFetchAll => '从所有远程存储库中抓取';
+
+  @override
+  String get gitMenuBranches => '分支';
+
+  @override
+  String get gitMenuRemotes => '远程';
+
+  @override
+  String get gitMenuStash => '存储';
+
+  @override
+  String get gitMenuTags => '标记';
+
+  @override
+  String get gitMenuWorktree => '工作树';
+
+  @override
+  String get gitMenuShowOutput => '显示 GIT 输出';
+
+  @override
+  String get gitMenuNoRemote => '没有可用的远程仓库。';
+
+  @override
+  String get gitMenuPickRemote => '选择远程仓库';
+
+  @override
+  String get gitMenuPickBranch => '选择分支';
+
+  @override
+  String get gitMenuNewWorktree => '添加工作树';
 }

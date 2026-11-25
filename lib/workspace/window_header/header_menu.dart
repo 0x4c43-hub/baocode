@@ -8,6 +8,7 @@ enum HeaderMenu {
   file('File'),
   edit('Edit'),
   view('View'),
+  git('Git'),
   help('Help');
 
   const HeaderMenu(this.label);
@@ -19,11 +20,13 @@ enum HeaderMenu {
     file => l10n.menuFile,
     edit => l10n.menuEdit,
     view => l10n.menuView,
+    git => l10n.menuGit,
     help => l10n.menuHelp,
   };
 }
 
-/// An entry of one of them: a rule between groups of commands, or a command.
+/// An entry of one of them: a rule between groups of commands, a command,
+/// or a submenu of further entries.
 class HeaderMenuItem {
   const HeaderMenuItem(
     this.label, {
@@ -31,6 +34,7 @@ class HeaderMenuItem {
     this.shortcut,
     this.checked = false,
     this.leading,
+    this.submenu,
   }) : rule = false;
 
   /// A line between groups.
@@ -40,6 +44,7 @@ class HeaderMenuItem {
       shortcut = null,
       checked = false,
       leading = null,
+      submenu = null,
       rule = true;
 
   final String label;
@@ -57,6 +62,9 @@ class HeaderMenuItem {
   /// Drawn where the tick is, in the item's color, when it has none (a
   /// project's own icon).
   final Widget Function(Color color)? leading;
+
+  /// Commands of a submenu, opened beside the item; null for a command.
+  final List<HeaderMenuItem>? submenu;
 
   final bool rule;
 }
