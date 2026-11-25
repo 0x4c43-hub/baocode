@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../window/code_args.dart';
+import 'app_edition.dart';
 import 'app_platform.dart';
 import 'context_menu.dart';
 import 'shell_command_io.dart'
@@ -23,7 +24,7 @@ ContextMenuInstaller? platformContextMenu() {
 /// should the system not have yet.
 class MacContextMenu implements ContextMenuInstaller {
   MacContextMenu({
-    this.extensionId = 'dev.baocode.desktop.FinderExtension',
+    this.extensionId = finderExtensionId,
     String? extensionPath,
     ShellCommandRunner? run,
   }) : extensionPath = extensionPath ?? _bundledExtension(),

@@ -23,6 +23,11 @@
 //                                                without VERSION; tool/
 //                                                fetch_remote_server.dart)
 //                                                instead of building one
+//   dart run tool/build_macos.dart --carry-remote put the remote server's
+//                                                builds in the app, which
+//                                                then downloads nothing (a
+//                                                build not published to
+//                                                dl.baocode.dev)
 //
 // They land in build/installers/: BaoCode-<version>-<arch>.dmg and
 // BaoCode-<version>-mac-<arch>.zip, arch arm64 or x64 (the channel
@@ -126,6 +131,9 @@ Future<void> main(List<String> arguments) async {
   }
   final channel = arguments.contains('--channel');
   final edition = channel ? '-channel' : '';
+  // This fork's builds are not published to dl.baocode.dev, so the remote
+  // server cannot be downloaded: carry it in the app instead.
+  final carryRemote = arguments.contains('--carry-remote');
   final releaseAt = arguments.indexOf('--remote-release');
   final remoteRelease = releaseAt < 0
       ? null
@@ -153,6 +161,9 @@ Future<void> main(List<String> arguments) async {
       'build',
       'macos',
       '--release',
+      // This fork is BaoCode 2: it has its own bundle identifier, and its
+      // update must not install the original app over it.
+      '--dart-define=BAOCODE_CUSTOM=true',
       if (channel) '--dart-define=BAOCODE_CHANNEL=true',
       // Its symbols kept, to be saved before it is stripped below.
       '--extra-gen-snapshot-options=--no-strip',
@@ -196,6 +207,7 @@ Future<void> main(List<String> arguments) async {
   final remoteVersion = _bundleRemote(
     remote,
     Directory('${bundle.path}/Contents/Resources/remote'),
+    carry: carryRemote,
   );
 
   _step('Checking the app');
@@ -538,8 +550,14 @@ class _Signing {
 
 /// Puts [remote]'s VERSION and servers.json (tool/build_remote_server.dart)
 /// in [target], and nothing else: the builds an older run put there go.
+/// With [carry], the builds themselves go too, uncompressed (the form
+/// `DirectoryServerBinaries` reads), so a host needs no download.
 /// Answers the VERSION.
-String _bundleRemote(Directory remote, Directory target) {
+String _bundleRemote(
+  Directory remote,
+  Directory target, {
+  bool carry = false,
+}) {
   if (!File('${remote.path}/servers.json').existsSync()) {
     _fail(
       'No remote server built in ${remote.path}.\n'
@@ -551,6 +569,16 @@ String _bundleRemote(Directory remote, Directory target) {
   target.createSync(recursive: true);
   for (final name in ['VERSION', 'servers.json']) {
     File('${remote.path}/$name').copySync('${target.path}/$name');
+  }
+  if (carry) {
+    for (final file in remote.listSync()) {
+      if (file is! File) continue;
+      final name = file.uri.pathSegments.last;
+      if (!name.startsWith('baocode-server-') || name.endsWith('.gz')) {
+        continue;
+      }
+      file.copySync('${target.path}/$name');
+    }
   }
   return File('${remote.path}/VERSION').readAsStringSync().trim();
 }

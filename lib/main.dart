@@ -89,6 +89,7 @@ import 'platform/memory_budget.dart';
 import 'platform/native_md_clipboard.dart';
 import 'platform/app_binding.dart';
 import 'platform/app_platform.dart';
+import 'platform/app_edition.dart';
 import 'platform/data_dir.dart';
 import 'platform/error_log.dart';
 import 'platform/event_log.dart';
@@ -691,6 +692,9 @@ void followSettingsFiles(SettingsFiles files) {
 /// `update.mode` says, from baocode.dev, installed as the app quits. None
 /// where the build does not update itself.
 UpdateController? _startUpdates(SettingsFiles files) {
+  // The local BaoCode 2 build keeps its own identity and changes; the
+  // official update would replace it with the original app.
+  if (customEdition) return null;
   final platform = platformUpdates(
     updatesDirectory: DataDirectory.current.updatesDir,
   );

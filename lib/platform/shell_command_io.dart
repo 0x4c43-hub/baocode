@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../kernel/claude_code/claude_environment.dart';
 import '../window/code_args.dart';
+import 'app_edition.dart';
 import 'app_platform.dart';
 import 'shell_command.dart';
 
@@ -85,7 +86,7 @@ bool _exists(String path) =>
 class MacShellCommand implements ShellCommandInstaller {
   MacShellCommand({
     this.target = '/usr/local/bin/code',
-    this.bundleId = 'dev.baocode.desktop',
+    this.bundleId = appBundleId,
     ShellCommandRunner? run,
     Future<String?> Function()? searchPath,
     this.temporaryDirectory,

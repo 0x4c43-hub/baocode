@@ -42,19 +42,19 @@ void main() {
     );
 
     test('on when pluginkit lists it with a +; off otherwise', () async {
-      listed = '     dev.baocode.desktop.FinderExtension(1.0.0)\n';
+      listed = '     dev.baocode.desktop.baocode2.FinderExtension(1.0.0)\n';
       expect(await menu().status(), ContextMenuStatus.off);
-      listed = '-    dev.baocode.desktop.FinderExtension(1.0.0)\n';
+      listed = '-    dev.baocode.desktop.baocode2.FinderExtension(1.0.0)\n';
       expect(await menu().status(), ContextMenuStatus.off);
       listed =
-          '     dev.baocode.desktop.FinderExtension(1.0.0)\n'
-          '+    dev.baocode.desktop.FinderExtension(1.0.0)\n';
+          '     dev.baocode.desktop.baocode2.FinderExtension(1.0.0)\n'
+          '+    dev.baocode.desktop.baocode2.FinderExtension(1.0.0)\n';
       expect(await menu().status(), ContextMenuStatus.on);
       expect(ran.last, [
         'pluginkit',
         '-m',
         '-i',
-        'dev.baocode.desktop.FinderExtension',
+        'dev.baocode.desktop.baocode2.FinderExtension',
       ]);
     });
 
@@ -69,7 +69,7 @@ void main() {
             '-e',
             'use',
             '-i',
-            'dev.baocode.desktop.FinderExtension',
+            'dev.baocode.desktop.baocode2.FinderExtension',
           ],
         ]);
         ran.clear();
@@ -80,7 +80,7 @@ void main() {
             '-e',
             'ignore',
             '-i',
-            'dev.baocode.desktop.FinderExtension',
+            'dev.baocode.desktop.baocode2.FinderExtension',
           ],
         ]);
       },
