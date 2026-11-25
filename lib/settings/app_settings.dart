@@ -23,6 +23,7 @@ import '../theme/workbench_theme.dart' show WorkbenchThemeService;
 import '../tips/builtin_tips.dart';
 import '../tips/feature_tip.dart';
 import '../tips/feature_tips_controller.dart';
+import '../update/source_update_controller.dart';
 import '../update/update_controller.dart';
 import '../usage/ui/usage_dashboard.dart';
 import '../workspace/workspace.dart';
@@ -62,6 +63,7 @@ class AppSettings {
     this.sync,
     this.installs,
     this.updates,
+    this.sourceUpdates,
     this.diagnostics,
     this.workspace,
     this.claudeStatus,
@@ -91,6 +93,10 @@ class AppSettings {
   /// Updating the app: Settings → Updates, Check for Updates; none where
   /// the build does not update itself.
   final UpdateController? updates;
+
+  /// BaoCode 2's own updates, from the checkout's sources; none where this
+  /// is not the custom build.
+  final SourceUpdateController? sourceUpdates;
 
   /// Uploads the diagnostic logs, from Settings → Updates; none under test.
   final DiagnosticsUploader? diagnostics;
@@ -241,6 +247,7 @@ class AppSettings {
       case SettingsSection.updates:
         return UpdatesSettingsPage(
           updates: updates,
+          source: sourceUpdates,
           settings: files?.settings,
           diagnostics: diagnostics,
         );

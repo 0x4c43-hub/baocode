@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert' show jsonEncode;
+import 'dart:io' show Platform;
 import 'dart:ui' show AppExitResponse, AppExitType;
 
 import 'package:flutter/foundation.dart'
@@ -133,6 +134,7 @@ import 'theme/ui_zoom.dart';
 import 'theme/window_blur.dart';
 import 'theme/workbench_theme.dart';
 import 'theme/theme_transition.dart';
+import 'update/source_update_controller.dart';
 import 'update/update_controller.dart';
 import 'update/update_platform.dart';
 import 'update/update_service.dart';
@@ -434,6 +436,7 @@ Future<void> main(List<String> arguments) async {
       sync: sync,
       installs: VsCodeInstalls.current(),
       updates: _startUpdates(files),
+      sourceUpdates: _startSourceUpdates(files),
       diagnostics: DiagnosticsUploader.platform(),
       workspace: workspace,
       claudeStatus: localClaudeStatus,
@@ -725,6 +728,22 @@ UpdateController? _startUpdates(SettingsFiles files) {
     openUrl: (url) => openExternal('$url'),
     openFile: openExternal,
   );
+}
+
+/// BaoCode 2's own updates: the checkout's `tool/sync_custom.sh` takes a
+/// version upstream has published, tests it and builds it while the app
+/// runs, and installs it once the app quits (tool/in_app_update.sh). None
+/// for a build that names no checkout.
+SourceUpdateController? _startSourceUpdates(SettingsFiles files) {
+  if (!customEdition || sourceDir.isEmpty) return null;
+  final home = Platform.environment['HOME'] ?? '';
+  return SourceUpdateController(
+    sourceDir: sourceDir,
+    logPath: p.join(home, 'Library', 'Logs', 'BaoCode2-update.log'),
+    autoUpdate: () =>
+        UpdateMode.parse(files.settings[UpdateMode.settingKey]) ==
+        UpdateMode.automatic,
+  )..start();
 }
 
 /// The channel build's first start (lib/channel/): to set up while it is

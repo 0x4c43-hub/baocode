@@ -7269,6 +7269,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateUnsupported => '此版本的 BaoCode 不支持自动更新。';
 
   @override
+  String get sourceUpdateTitle => '源码更新';
+
+  @override
+  String get sourceUpdatePageDescription =>
+      'BaoCode 2 从源码更新：上游发布新版本后，在这里构建并安装。';
+
+  @override
+  String sourceUpdateUpToDate(String version) {
+    return '$version 已是最新：上游没有发布更新的版本。';
+  }
+
+  @override
+  String sourceUpdateAvailable(String version) {
+    return '上游已发布 $version，可以在后台构建。';
+  }
+
+  @override
+  String get sourceUpdateBuilding => '正在合并、测试并构建；完成后退出 BaoCode 2 即会安装。';
+
+  @override
+  String get sourceUpdateReady => '新版本已构建好，退出 BaoCode 2 后自动安装并重新打开。';
+
+  @override
+  String sourceUpdateFailed(String error) {
+    return '更新没有完成：$error';
+  }
+
+  @override
+  String get sourceUpdateUpdateNow => '立即更新';
+
+  @override
+  String get sourceUpdateLog => '查看日志';
+
+  @override
   String updateManual(String reason) {
     return 'BaoCode 无法在当前位置自动更新（$reason），请从 baocode.dev 下载新版本。';
   }

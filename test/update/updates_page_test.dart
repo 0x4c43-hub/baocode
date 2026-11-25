@@ -11,6 +11,7 @@ import 'package:baocode/l10n/l10n.dart';
 import 'package:baocode/settings/pages/settings_dropdown.dart';
 import 'package:baocode/settings/pages/updates_page.dart';
 import 'package:baocode/settings/user_settings.dart';
+import 'package:baocode/update/source_update_controller.dart';
 import 'package:baocode/update/update_controller.dart';
 import 'package:baocode/update/update_service.dart';
 import 'package:baocode/update/update_settings.dart';
@@ -77,6 +78,29 @@ void main() {
       tester.widget<IdeButton>(button(l10n.updateCheckNow)).onPressed,
       isNull,
     );
+  });
+
+  testWidgets('the custom build shows the version upstream publishes', (
+    tester,
+  ) async {
+    final source = SourceUpdateController(
+      sourceDir: data.path,
+      logPath: p.join(data.path, 'update.log'),
+      autoUpdate: () => false,
+    )
+      ..localVersion = AppVersion.parse('2.0.6+39')
+      ..localCommit = 'abc1234'
+      ..upstreamVersion = AppVersion.parse('2.0.7+40')
+      ..status = SourceUpdateStatus.available
+      ..lastChecked = DateTime(2026, 11, 25, 10, 30);
+    addTearDown(source.dispose);
+
+    await show(tester, UpdatesSettingsPage(source: source, settings: settings));
+
+    expect(find.text(l10n.sourceUpdateTitle), findsOneWidget);
+    expect(find.text(l10n.sourceUpdateAvailable('2.0.7+40')), findsOneWidget);
+    expect(button(l10n.sourceUpdateUpdateNow), findsOneWidget);
+    expect(find.textContaining('abc1234'), findsOneWidget);
   });
 
   testWidgets('checks, shows what it found and its notes, restarts', (

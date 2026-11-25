@@ -5482,6 +5482,36 @@
   },
   "updateDisabled": "Updates are turned off (update.mode is \"none\").",
   "updateUnsupported": "This build of BaoCode doesn't update itself.",
+  "sourceUpdateTitle": "Source updates",
+  "sourceUpdatePageDescription": "BaoCode 2 updates from its sources: a version upstream publishes is built here, then installed.",
+  "sourceUpdateUpToDate": "{version} is the newest: upstream publishes nothing newer.",
+  "@sourceUpdateUpToDate": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "sourceUpdateAvailable": "Upstream publishes {version}; it can be built in the background.",
+  "@sourceUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "sourceUpdateBuilding": "Merging, testing and building; BaoCode 2 installs it once it quits.",
+  "sourceUpdateReady": "The new version is built. It installs when BaoCode 2 quits, and opens again.",
+  "sourceUpdateFailed": "The update did not finish: {error}",
+  "@sourceUpdateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sourceUpdateUpdateNow": "Update Now",
+  "sourceUpdateLog": "Show Log",
   "updateManual": "BaoCode can't update itself here ({reason}). Download the new version from baocode.dev.",
   "@updateManual": {
     "placeholders": {

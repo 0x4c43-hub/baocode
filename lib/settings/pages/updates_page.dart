@@ -7,6 +7,7 @@ import '../../ide/ide_button.dart';
 import '../../ide/ide_menu.dart';
 import '../../l10n/l10n.dart';
 import '../../theme/codicons.dart';
+import '../../update/source_update_controller.dart';
 import '../../update/update_controller.dart';
 import '../../update/update_service.dart';
 import '../../update/update_settings.dart';
@@ -25,12 +26,17 @@ class UpdatesSettingsPage extends StatefulWidget {
   const UpdatesSettingsPage({
     super.key,
     this.updates,
+    this.source,
     this.settings,
     this.diagnostics,
   });
 
   /// None where the build does not update itself (a debug build).
   final UpdateController? updates;
+
+  /// BaoCode 2's own updates, from the checkout it was built from; none
+  /// where this is not that build.
+  final SourceUpdateController? source;
 
   /// settings.json; none under test, where choices are not kept.
   final UserSettings? settings;
@@ -91,7 +97,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
   Widget build(BuildContext context) {
     final settings = widget.settings;
     return ListenableBuilder(
-      listenable: Listenable.merge([?settings, ?_service]),
+      listenable: Listenable.merge([?settings, ?_service, ?widget.source]),
       builder: (context, _) => _page(
         context,
         _service?.mode ?? UpdateMode.parse(settings?[UpdateMode.settingKey]),
@@ -111,32 +117,40 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
     final notes = noted?.notesFor(l10n.localeName);
     return SettingsPage(
       title: l10n.updatesSettingsTitle,
-      description: l10n.updatesSettingsDescription,
+      description: widget.source == null
+          ? l10n.updatesSettingsDescription
+          : l10n.sourceUpdatePageDescription,
       children: [
-        SettingsCard(
-          children: [
-            SettingsRow(
-              label: l10n.updateCurrentVersion,
-              description: [
-                (service?.current ?? currentAppVersion).marketing,
-                switch (service?.lastChecked) {
-                  final time? => l10n.updateLastChecked(_format(context, time)),
-                  null when service != null => l10n.updateNeverChecked,
-                  null => l10n.updateUnsupported,
-                },
-              ].join(' · '),
-              trailing: IdeButton(
-                label: l10n.updateCheckNow,
-                icon: Codicons.refresh,
-                secondary: true,
-                onPressed: service == null || busy || mode == UpdateMode.none
-                    ? null
-                    : () => unawaited(_check()),
+        if (widget.source case final source?)
+          _sourceCard(context, source)
+        else
+          SettingsCard(
+            children: [
+              SettingsRow(
+                label: l10n.updateCurrentVersion,
+                description: [
+                  (service?.current ?? currentAppVersion).marketing,
+                  switch (service?.lastChecked) {
+                    final time? => l10n.updateLastChecked(
+                      _format(context, time),
+                    ),
+                    null when service != null => l10n.updateNeverChecked,
+                    null => l10n.updateUnsupported,
+                  },
+                ].join(' · '),
+                trailing: IdeButton(
+                  label: l10n.updateCheckNow,
+                  icon: Codicons.refresh,
+                  secondary: true,
+                  onPressed:
+                      service == null || busy || mode == UpdateMode.none
+                      ? null
+                      : () => unawaited(_check()),
+                ),
               ),
-            ),
-            ?(service == null ? null : _status(context, service)),
-          ],
-        ),
+              ?(service == null ? null : _status(context, service)),
+            ],
+          ),
         SettingsCard(
           children: [
             SettingsRow(
@@ -209,6 +223,81 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
     final material = MaterialLocalizations.of(context);
     return '${material.formatMediumDate(time)} '
         '${material.formatTimeOfDay(TimeOfDay.fromDateTime(time))}';
+  }
+
+  /// BaoCode 2's own: the version running from this checkout, the version
+  /// upstream publishes, and the build that would take it.
+  Widget _sourceCard(BuildContext context, SourceUpdateController source) {
+    final l10n = context.l10n;
+    final upstream = source.upstreamVersion;
+    final busy =
+        source.status == SourceUpdateStatus.checking ||
+        source.status == SourceUpdateStatus.building;
+    final published = upstream == null
+        ? ''
+        : [
+            upstream.marketing,
+            if (upstream.build != 0) '+${upstream.build}',
+          ].join();
+    final status = switch (source.status) {
+      SourceUpdateStatus.idle => null,
+      SourceUpdateStatus.checking => l10n.updateChecking,
+      SourceUpdateStatus.upToDate => l10n.sourceUpdateUpToDate(
+        source.localVersion.marketing,
+      ),
+      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(published),
+      SourceUpdateStatus.building => l10n.sourceUpdateBuilding,
+      SourceUpdateStatus.ready => l10n.sourceUpdateReady,
+      SourceUpdateStatus.failed => l10n.sourceUpdateFailed(source.error ?? ''),
+    };
+    final detail = switch (source.status) {
+      SourceUpdateStatus.building ||
+      SourceUpdateStatus.ready ||
+      SourceUpdateStatus.failed => source.logTail,
+      _ => null,
+    };
+    return SettingsCard(
+      children: [
+        SettingsRow(
+          label: l10n.sourceUpdateTitle,
+          description: [
+            l10n.updateCurrentVersion,
+            currentAppVersion.marketing,
+            ?source.localCommit,
+            switch (source.lastChecked) {
+              final time? => l10n.updateLastChecked(_format(context, time)),
+              null => l10n.updateNeverChecked,
+            },
+          ].join(' · '),
+          trailing: IdeButton(
+            label: l10n.updateCheckNow,
+            icon: Codicons.refresh,
+            secondary: true,
+            onPressed: busy ? null : () => unawaited(source.check()),
+          ),
+        ),
+        if (status != null)
+          SettingsRow(
+            label: status,
+            description: detail,
+            trailing: SettingsButtons(
+              children: [
+                IdeButton(
+                  label: l10n.sourceUpdateLog,
+                  secondary: true,
+                  onPressed: () => unawaited(source.openLog()),
+                ),
+                if (source.status == SourceUpdateStatus.available ||
+                    source.status == SourceUpdateStatus.failed)
+                  IdeButton(
+                    label: l10n.sourceUpdateUpdateNow,
+                    onPressed: busy ? null : () => unawaited(source.update()),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   /// What the last check found, with Restart to Update when it found a

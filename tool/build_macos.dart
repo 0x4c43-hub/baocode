@@ -164,6 +164,8 @@ Future<void> main(List<String> arguments) async {
       // This fork is BaoCode 2: it has its own bundle identifier, and its
       // update must not install the original app over it.
       '--dart-define=BAOCODE_CUSTOM=true',
+      // Settings → Updates runs this checkout's tool/sync_custom.sh.
+      '--dart-define=BAOCODE_SOURCE_DIR=${root.path}',
       if (channel) '--dart-define=BAOCODE_CHANNEL=true',
       // Its symbols kept, to be saved before it is stripped below.
       '--extra-gen-snapshot-options=--no-strip',

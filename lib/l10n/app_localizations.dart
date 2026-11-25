@@ -12459,6 +12459,60 @@ abstract class AppLocalizations {
   /// **'This build of BaoCode doesn\'t update itself.'**
   String get updateUnsupported;
 
+  /// No description provided for @sourceUpdateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Source updates'**
+  String get sourceUpdateTitle;
+
+  /// No description provided for @sourceUpdatePageDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'BaoCode 2 updates from its sources: a version upstream publishes is built here, then installed.'**
+  String get sourceUpdatePageDescription;
+
+  /// No description provided for @sourceUpdateUpToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'{version} is the newest: upstream publishes nothing newer.'**
+  String sourceUpdateUpToDate(String version);
+
+  /// No description provided for @sourceUpdateAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Upstream publishes {version}; it can be built in the background.'**
+  String sourceUpdateAvailable(String version);
+
+  /// No description provided for @sourceUpdateBuilding.
+  ///
+  /// In en, this message translates to:
+  /// **'Merging, testing and building; BaoCode 2 installs it once it quits.'**
+  String get sourceUpdateBuilding;
+
+  /// No description provided for @sourceUpdateReady.
+  ///
+  /// In en, this message translates to:
+  /// **'The new version is built. It installs when BaoCode 2 quits, and opens again.'**
+  String get sourceUpdateReady;
+
+  /// No description provided for @sourceUpdateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The update did not finish: {error}'**
+  String sourceUpdateFailed(String error);
+
+  /// No description provided for @sourceUpdateUpdateNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Update Now'**
+  String get sourceUpdateUpdateNow;
+
+  /// No description provided for @sourceUpdateLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Log'**
+  String get sourceUpdateLog;
+
   /// No description provided for @updateManual.
   ///
   /// In en, this message translates to:

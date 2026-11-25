@@ -12,7 +12,7 @@
 #                                       the app instead of reusing the
 #                                       published one
 #   tool/sync_custom.sh --install-only  install what is built already, and
-#                                       nothing else (tool/autoupdate_custom.sh)
+#                                       nothing else (tool/in_app_update.sh)
 #
 # The merge is a normal merge, not a rebase: the branch may already be
 # pushed. A conflict stops before anything is built or installed.
@@ -198,23 +198,60 @@ fi
 
 echo "==> Building"
 # The remote server's build is not published for a custom build. Reuse the
-# one published for this release, which the original app carries (its
-# version is the release's, then the build's), so nothing is downloaded and
-# no host is sent a second build; else carry our own in the app.
+# one published for this release, so nothing is downloaded and no host is
+# sent a second build: the original app's, when it is the same release, else
+# the one reused last time (a later release of that app says nothing of
+# this one), else our own, carried in the app.
 remote_flags=(--carry-remote)
+remembered="$HOME/Library/Application Support/BaoCode2/remote-version"
+version_in() {
+  if [ -f "$1" ]; then tr -d '[:space:]' <"$1"; fi
+}
 if [ "$CARRY_REMOTE" = 0 ]; then
   app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -1)"
   release_prefix="${app_version%%+*}"
   release_build="${app_version#*+}"
   [ "$release_build" = "$app_version" ] && release_build=0
-  published_version="$(tr -d '[:space:]' \
-    < /Applications/BaoCode.app/Contents/Resources/remote/VERSION 2>/dev/null || true)"
-  if [ -n "$published_version" ] &&
-    [ "${published_version%%-*}" = "$release_prefix.$release_build" ]; then
+  wanted="${release_prefix}.${release_build}"
+  published_version=""
+  for candidate in \
+    "$(version_in /Applications/BaoCode.app/Contents/Resources/remote/VERSION)" \
+    "$(version_in build/remote-release/VERSION)" \
+    "$(version_in "$remembered")"; do
+    if [ -n "$candidate" ] && [ "${candidate%%-*}" = "$wanted" ]; then
+      published_version="$candidate"
+      break
+    fi
+  done
+  # None names this release: ask what is published now (a release published
+  # after this app's own builds, say), rather than carrying for nothing.
+  if [ -z "$published_version" ]; then
+    echo "  Remote server: asking dl.baocode.dev for the newest published"
+    if dart run tool/fetch_remote_server.dart latest \
+      --out build/remote-release >/dev/null 2>&1; then
+      candidate="$(version_in build/remote-release/VERSION)"
+      if [ -n "$candidate" ] && [ "${candidate%%-*}" = "$wanted" ]; then
+        published_version="$candidate"
+      fi
+    fi
+  fi
+  if [ -n "$published_version" ]; then
     echo "  Remote server: reusing $published_version"
     remote_flags=(--remote-release "$published_version")
   fi
 fi
-dart run tool/build_macos.dart "${remote_flags[@]}"
+if ! dart run tool/build_macos.dart "${remote_flags[@]}"; then
+  if [ "${remote_flags[0]}" != --remote-release ]; then
+    exit 1
+  fi
+  # Published once, gone now (or never for this build): carry our own.
+  echo "  ${remote_flags[1]} is not served; carrying this build's own" >&2
+  remote_flags=(--carry-remote)
+  dart run tool/build_macos.dart "${remote_flags[@]}"
+fi
+if [ "${remote_flags[0]}" = --remote-release ]; then
+  mkdir -p "$(dirname "$remembered")"
+  printf '%s\n' "${remote_flags[1]}" >"$remembered"
+fi
 
 install_built

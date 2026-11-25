@@ -18,6 +18,11 @@ const _builtAsCustom = bool.fromEnvironment('BAOCODE_CUSTOM');
 const appBundleId = 'dev.baocode.desktop.baocode2';
 const finderExtensionId = '$appBundleId.FinderExtension';
 
+/// The checkout this build came from (`tool/build_macos.dart` passes it):
+/// its `tool/sync_custom.sh` takes what upstream publishes. Empty for a
+/// build made another way, which then updates nothing.
+const sourceDir = String.fromEnvironment('BAOCODE_SOURCE_DIR');
+
 /// Whether the app that is running was built from this project.
 bool get _runningThisBundle {
   if (!Platform.isMacOS) return false;

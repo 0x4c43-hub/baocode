@@ -7715,6 +7715,42 @@ class AppLocalizationsEn extends AppLocalizations {
       'This build of BaoCode doesn\'t update itself.';
 
   @override
+  String get sourceUpdateTitle => 'Source updates';
+
+  @override
+  String get sourceUpdatePageDescription =>
+      'BaoCode 2 updates from its sources: a version upstream publishes is built here, then installed.';
+
+  @override
+  String sourceUpdateUpToDate(String version) {
+    return '$version is the newest: upstream publishes nothing newer.';
+  }
+
+  @override
+  String sourceUpdateAvailable(String version) {
+    return 'Upstream publishes $version; it can be built in the background.';
+  }
+
+  @override
+  String get sourceUpdateBuilding =>
+      'Merging, testing and building; BaoCode 2 installs it once it quits.';
+
+  @override
+  String get sourceUpdateReady =>
+      'The new version is built. It installs when BaoCode 2 quits, and opens again.';
+
+  @override
+  String sourceUpdateFailed(String error) {
+    return 'The update did not finish: $error';
+  }
+
+  @override
+  String get sourceUpdateUpdateNow => 'Update Now';
+
+  @override
+  String get sourceUpdateLog => 'Show Log';
+
+  @override
   String updateManual(String reason) {
     return 'BaoCode can\'t update itself here ($reason). Download the new version from baocode.dev.';
   }
