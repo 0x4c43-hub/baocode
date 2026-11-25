@@ -30,6 +30,7 @@ import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as p;
 
 import '../../settings/user_settings.dart';
+import '../../workspace/window_controls.dart';
 import '../../theme/code_font.dart';
 import 'pty.dart';
 import 'shell_integration/shell_integration.dart';
@@ -47,6 +48,7 @@ import 'terminal_find.dart';
 import 'terminal_profiles.dart';
 import 'terminal_shell.dart';
 import 'terminal_xterm.dart';
+import 'terminal_zmodem.dart';
 
 import 'package:bao_xterm/common/event.dart';
 import 'package:bao_xterm/common/platform.dart';
@@ -325,6 +327,9 @@ class TerminalInstance extends ChangeNotifier {
     exitReason = null;
     _launch = null;
     _pty = null;
+    _zmodem?.dispose();
+    _zmodem = null;
+    _zmodemScanTail = Uint8List(0);
     _typedAhead.clear();
     _shellIntegration?.dispose();
     _shellIntegration = null;
@@ -474,6 +479,23 @@ class TerminalInstance extends ChangeNotifier {
   final _output = StreamController<Uint8List>.broadcast();
   StreamSubscription<Uint8List>? _printing;
 
+  /// The `rz`/`sz` running in this terminal, while it runs.
+  ZmodemSession? get zmodem => _zmodem;
+  ZmodemSession? _zmodem;
+
+  /// The end of the last chunk, kept back while it could still become the
+  /// start of a ZMODEM header.
+  Uint8List _zmodemScanTail = Uint8List(0);
+
+  /// Stops a transfer in progress, as the progress display's cancel button
+  /// does.
+  void cancelZmodem() {
+    final session = _zmodem;
+    if (session == null) return;
+    session.cancel();
+    _zmodemEnded(session, Uint8List(0));
+  }
+
   /// What the user typed before the process was there, as VS Code's
   /// process manager queues it.
   final List<Uint8List> _typedAhead = [];
@@ -561,6 +583,8 @@ class TerminalInstance extends ChangeNotifier {
       onRequestClose?.call(this);
       return;
     }
+    // Keys must not get between the protocol's bytes.
+    if (_zmodem?.active ?? false) return;
     if (_exited || _disposed || data.isEmpty) return;
     if (_pty case final pty?) {
       pty.write(data);
@@ -741,6 +765,50 @@ class TerminalInstance extends ChangeNotifier {
   /// What the process printed, into the emulator. The process is paused
   /// while much of it waits to be parsed, as VS Code's flow control does.
   void _printed(Uint8List data) {
+    final session = _zmodem;
+    if (session != null && session.active) {
+      final rest = session.feed(data);
+      if (rest != null) _zmodemEnded(session, rest);
+      return;
+    }
+    final bytes = _zmodemScanTail.isEmpty
+        ? data
+        : Uint8List.fromList([..._zmodemScanTail, ...data]);
+    final start = findZmodemStart(bytes);
+    if (start == null) {
+      final hold = zmodemStartPrefixAtEnd(bytes);
+      final end = bytes.length - hold;
+      _zmodemScanTail = hold == 0
+          ? Uint8List(0)
+          : Uint8List.fromList(bytes.sublist(end));
+      if (end > 0) _writeTerminal(bytes.sublist(0, end));
+      return;
+    }
+    _writeTerminal(bytes.sublist(0, start));
+    _zmodemScanTail = Uint8List(0);
+    final started = ZmodemSession(
+      send: _sendZmodem,
+      writeOutput: _writeTerminal,
+      pickSaveFile: (name) => WindowControls.pickSaveFile(name: name),
+      pickFiles: WindowControls.pickOpenFiles,
+      onChanged: () {
+        if (!_disposed) notifyListeners();
+      },
+      onDone: () => scheduleMicrotask(() {
+        final session = _zmodem;
+        if (session != null && !session.active) {
+          _zmodemEnded(session, Uint8List(0));
+        }
+      }),
+    );
+    _zmodem = started;
+    notifyListeners();
+    final rest = started.feed(bytes.sublist(start));
+    if (rest != null) _zmodemEnded(started, rest);
+  }
+
+  void _writeTerminal(Uint8List data) {
+    if (data.isEmpty) return;
     final count = data.length;
     _unparsed += count;
     terminal.write(data, () => _parsed(count));
@@ -749,6 +817,46 @@ class TerminalInstance extends ChangeNotifier {
       _pty?.pause();
     }
     _output.add(data);
+  }
+
+  void _sendZmodem(Uint8List data) {
+    if (_exited || _disposed) return;
+    _pty?.write(data);
+  }
+
+  void _zmodemEnded(ZmodemSession session, Uint8List rest) {
+    if (identical(_zmodem, session)) {
+      _zmodem = null;
+      notifyListeners();
+      final error = session.error;
+      if (error != null) {
+        _writeOwnText(
+          formatMessageForTerminal(
+            error == 'cancelled'
+                ? 'ZMODEM: transfer cancelled.'
+                : 'ZMODEM: $error.',
+          ),
+        );
+      } else if (session.direction == ZmodemDirection.download) {
+        final count = session.finishedFiles;
+        final what = count <= 1
+            ? 'received "${session.name ?? ''}"'
+            : 'received $count files';
+        _writeOwnText(
+          formatMessageForTerminal(
+            'ZMODEM: $what'
+            '${session.savedPath == null ? '' : ' to ${session.savedPath}'}.',
+          ),
+        );
+      } else if (session.direction == ZmodemDirection.upload) {
+        _writeOwnText(
+          formatMessageForTerminal(
+            'ZMODEM: sent ${session.finishedFiles} file(s).',
+          ),
+        );
+      }
+    }
+    if (rest.isNotEmpty) _writeTerminal(rest);
   }
 
   void _parsed(int count) {
@@ -832,6 +940,8 @@ class TerminalInstance extends ChangeNotifier {
     CodeFont.families.removeListener(_updateFont);
     if (!_exited) _pty?.kill();
     unawaited(_printing?.cancel());
+    _zmodem?.dispose();
+    _zmodem = null;
     unawaited(_output.close());
     unawaited(_onInput.close());
     unawaited(_onShellIntegrationReady.close());

@@ -829,6 +829,10 @@
   "@sidePanelSearchFiles": {
     "description": "The files page's header button that shows the text search in place of the tree."
   },
+  "sidePanelFindFile": "Search files by name",
+  "@sidePanelFindFile": {
+    "description": "The files page's header button that shows the file search in place of the tree, and that search's input placeholder."
+  },
   "sidePanelCloseSearch": "Close the search",
   "@sidePanelCloseSearch": {
     "description": "The files page's header button that brings the tree back."
@@ -9230,5 +9234,10 @@
   "gitMenuNoRemote": "There is no remote to work with.",
   "gitMenuPickRemote": "Pick a remote",
   "gitMenuPickBranch": "Pick a branch",
-  "gitMenuNewWorktree": "Add Worktree"
+  "gitMenuNewWorktree": "Add Worktree",
+  "zmodemReceiving": "Receiving",
+  "zmodemSending": "Sending",
+  "zmodemChooseSave": "Choose where to save…",
+  "zmodemChooseFiles": "Choose files to send…",
+  "zmodemCancel": "Cancel transfer"
 }

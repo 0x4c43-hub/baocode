@@ -1392,13 +1392,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get menuFile => '文件';
 
   @override
-  String get menuGit => 'Git';
-
-  @override
   String get menuEdit => '编辑';
 
   @override
   String get menuView => '查看';
+
+  @override
+  String get menuGit => 'Git';
 
   @override
   String get menuHelp => '帮助';
@@ -1757,6 +1757,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get sidePanelSearchFiles => '搜索项目文本';
+
+  @override
+  String get sidePanelFindFile => '按文件名搜索文件';
 
   @override
   String get sidePanelCloseSearch => '关闭搜索';
@@ -13871,4 +13874,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get gitMenuNewWorktree => '添加工作树';
+
+  @override
+  String get zmodemReceiving => '正在接收';
+
+  @override
+  String get zmodemSending => '正在发送';
+
+  @override
+  String get zmodemChooseSave => '选择保存位置…';
+
+  @override
+  String get zmodemChooseFiles => '选择要发送的文件…';
+
+  @override
+  String get zmodemCancel => '取消传输';
 }

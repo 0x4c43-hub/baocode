@@ -135,6 +135,14 @@ class SideBarPart extends StatelessWidget {
         onAsk: chat.canAsk ? chat.ask : null,
         onFixup: (git, commit) async =>
             scm.panelKey.currentState?.fixupInto(git, commit),
+        onCommit: () {
+          final panel = scm.panelKey.currentState;
+          if (panel != null) unawaited(panel.commit());
+        },
+        onCommitAndPush: () {
+          final panel = scm.panelKey.currentState;
+          if (panel != null) unawaited(panel.commitAndPush());
+        },
         onOpen: (path) {
           scm.leaveGitLog();
           unawaited(editors.open(path, focusEditor: true));

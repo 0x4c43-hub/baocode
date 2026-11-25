@@ -27,6 +27,8 @@ import '../../theme/codicons.dart';
 import '../../theme/material_file_icons.dart';
 import '../../theme/workbench_theme.dart';
 import '../../workspace/islands.dart';
+import '../../workspace/window_header/git_menu.dart';
+import '../../workspace/window_header/header_menu.dart' show HeaderMenuItem;
 import '../host_paths.dart';
 import 'ide_git_commit_panel.dart' show IdeGitCommitPanel;
 import '../file_service.dart';
@@ -44,6 +46,8 @@ import '../ide_notifications.dart';
 import '../ide_spinning.dart';
 import 'git_branch_actions.dart';
 import 'commit_message.dart';
+import 'git_menu_actions.dart'
+    show ideGitNewTag, ideGitNewWorktree, ideGitShowOutput;
 import 'git_branch_tree.dart';
 import 'ide_git_branch_popup.dart';
 import 'git_change_editor.dart';
@@ -56,6 +60,7 @@ import 'git_service.dart';
 import 'ide_git_list_tree_switch.dart';
 import 'ide_git_rebase_dialog.dart';
 import 'ide_git_ref_labels.dart';
+import 'ide_git_stash_view.dart' show ideGitStashChanges;
 import 'ide_scm_view.dart';
 import 'scm_host.dart';
 import 'scm_tree.dart';
@@ -702,7 +707,15 @@ class IdeGitLogView extends StatefulWidget {
     this.ai,
     this.onAsk,
     this.onFixup,
+    this.onCommit,
+    this.onCommitAndPush,
   });
+
+  /// Commits the changes the details show, and with [onCommitAndPush] pushes
+  /// them too: the Git menu's Commit entries, offered only where they are
+  /// given (the commit panel is the view's own, or the host's).
+  final VoidCallback? onCommit;
+  final VoidCallback? onCommitAndPush;
 
   /// Commits the local changes checked into a commit (Fixup); not offered
   /// when null.
@@ -1328,6 +1341,151 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
   /// The branch's button: where the branch popup opens.
   final GlobalKey _branchButton = GlobalKey();
 
+  /// The Git menu's button: where its choices of a remote and a branch
+  /// open, one under the other.
+  final GlobalKey _gitMenuButton = GlobalKey();
+
+  /// What the toolbar's Git menu offers for [git]: the operations Source
+  /// Control can run here (the log's, the commit panel's, the branch
+  /// actions'), and its own menus for a remote and a branch.
+  GitMenuActions _gitMenuActions(IdeGitRepository git) {
+    final host = _LogBranchHost(this);
+    final branchActions = IdeGitBranchActions(context, git, host);
+    void run(Future<void> Function() operation) => unawaited(_run(operation));
+    return GitMenuActions(
+      pull: () => run(git.pull),
+      pullRebase: () => run(git.pullRebase),
+      pullFrom: () => unawaited(_pullFrom(git)),
+      push: () => run(git.push),
+      pushForce: () => run(git.pushForce),
+      pushTo: () => unawaited(_pushTo(git)),
+      pushToForce: () => unawaited(_pushTo(git, force: true)),
+      fetch: () => run(git.fetch),
+      fetchPrune: () => run(() => git.fetch(prune: true)),
+      fetchDelete: () => run(() => git.fetch(prune: true, pruneTags: true)),
+      fetchAll: () => run(() async {
+        await Future.wait([
+          for (final (_, repository) in widget.host.repositories)
+            repository.fetch(),
+        ]);
+      }),
+      checkout: () => _showBranches(git),
+      commit: widget.onCommit,
+      commitAndPush: widget.onCommitAndPush,
+      updateProject: () => unawaited(branchActions.updateProject()),
+      branch: () => _showBranches(git),
+      remote: () => unawaited(branchActions.manageRemotes()),
+      stash: () => unawaited(
+        ideGitStashChanges(context, git).catchError((Object error) {
+          _report(error);
+          return false;
+        }),
+      ),
+      tag: () => ideGitNewTag(context, git, run),
+      worktree: () => ideGitNewWorktree(context, git, run),
+      showOutput: () =>
+          unawaited(ideGitShowOutput(context, git).catchError(_report)),
+    );
+  }
+
+  /// The Git menu's entries as the app's menus take them: groups divided
+  /// as its rules are, submenus to their right.
+  List<IdeMenuEntry> _gitMenuEntries(List<HeaderMenuItem> items) {
+    final groups = <List<IdeMenuEntry>>[[]];
+    for (final item in items) {
+      if (item.rule) {
+        if (groups.last.isNotEmpty) groups.add([]);
+        continue;
+      }
+      groups.last.add(switch (item.submenu) {
+        final submenu? => IdeMenuAction(
+          item.label,
+          submenu: _gitMenuEntries(submenu),
+        ),
+        null => IdeMenuAction(
+          item.label,
+          enabled: item.onSelected != null,
+          onSelected: item.onSelected,
+        ),
+      });
+    }
+    return ideMenuGroups(groups);
+  }
+
+  /// Pulls a branch of a remote into the one shown: the remote and the
+  /// branch picked from menus under the Git button (no quick input here,
+  /// the side panel having none).
+  Future<void> _pullFrom(IdeGitRepository git) async {
+    final picked = await _pickRemoteAndBranch(git);
+    if (picked == null) return;
+    await _run(() => git.pullFrom(picked.$1, picked.$2));
+  }
+
+  /// Pushes the branch shown to a remote's branch, [force] with the lease:
+  /// the remote and the branch picked from menus under the Git button.
+  Future<void> _pushTo(IdeGitRepository git, {bool force = false}) async {
+    final picked = await _pickRemoteAndBranch(git);
+    if (picked == null) return;
+    await _run(
+      () => force
+          ? git.pushToForce(picked.$1, picked.$2)
+          : git.pushTo(picked.$1, picked.$2),
+    );
+  }
+
+  /// A remote of [git], and a branch on it: picked from menus under the
+  /// Git button, or the only remote without a choice.
+  Future<(String, String)?> _pickRemoteAndBranch(IdeGitRepository git) async {
+    final l10n = context.l10n;
+    final remotes = await git.service.remotes();
+    if (remotes.isEmpty) {
+      widget.notifications.notify(IdeSeverity.warning, l10n.gitMenuNoRemote);
+      return null;
+    }
+    final remote = remotes.length == 1
+        ? remotes.first
+        : await _chooseUnderGitMenu(remotes);
+    if (remote == null) return null;
+    final refs = await git.refs();
+    final branches = <String>{
+      for (final ref in refs)
+        if (ref.kind == IdeGitRefKind.remote &&
+            (ref.remote == remote || ref.name.startsWith('$remote/')))
+          ref.name.startsWith('$remote/')
+              ? ref.name.substring(remote.length + 1)
+              : ref.name,
+    }.toList()..sort();
+    if (branches.isEmpty) {
+      widget.notifications.notify(IdeSeverity.warning, l10n.gitMenuNoRemote);
+      return null;
+    }
+    final branch = await _chooseUnderGitMenu(branches);
+    return branch == null ? null : (remote, branch);
+  }
+
+  /// [choices], one picked from a menu under the Git button; null when
+  /// none is.
+  Future<String?> _chooseUnderGitMenu(List<String> choices) async {
+    final box = _gitMenuButton.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || choices.isEmpty) return null;
+    final completer = Completer<String?>();
+    await showIdeMenu(
+      context,
+      anchor: box.localToGlobal(Offset.zero) & box.size,
+      entries: [
+        for (final choice in choices)
+          IdeMenuAction(
+            choice,
+            onSelected: () {
+              if (!completer.isCompleted) completer.complete(choice);
+            },
+          ),
+      ],
+    );
+    if (!completer.isCompleted) completer.complete(null);
+    return completer.future;
+  }
+
   /// The branch popup, under the branch's button.
   void _showBranches(IdeGitRepository git) {
     final box = _branchButton.currentContext?.findRenderObject() as RenderBox?;
@@ -1656,6 +1814,17 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
           onPressed: toggleSort,
         ),
       ],
+      KeyedSubtree(
+        key: _gitMenuButton,
+        child: _DropButton(
+          icon: Codicons.sourceControl,
+          label: l10n.menuGit,
+          tooltip: l10n.menuGit,
+          maxWidth: 60,
+          entries: () =>
+              _gitMenuEntries(gitMenuItems(l10n, _gitMenuActions(git))),
+        ),
+      ),
       IdeMenuButton(
         icon: Codicons.ellipsis,
         tooltip: l10n.commonMoreActions,

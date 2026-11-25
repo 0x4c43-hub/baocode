@@ -22,6 +22,7 @@ import '../../ide/ide_explorer.dart';
 import '../../ide/ide_agent_edits.dart' show IdeAgentEdit;
 import '../../ide/ide_code_editor.dart' show IdeTextFormatter;
 import '../../ide/ide_hover.dart';
+import '../../ide/ide_input.dart' show IdeInputBox;
 import '../../ide/file_views.dart';
 import '../../ide/search/ide_search_view.dart';
 import '../../ide/services/git_changes.dart';
@@ -31,6 +32,7 @@ import '../../ide/ide_menu.dart';
 import '../../ide/ide_notifications.dart';
 import '../../ide/ide_modern_ui.dart';
 import '../../ide/ide_panes.dart';
+import '../../ide/ide_quick_open.dart' show IdeFileHit, IdeFileIndex;
 import '../../ide/ide_tab_bar.dart'
     show IdeEditorTab, IdeTabStrip, ideTabDescriptions;
 import '../../ide/ide_view_state.dart' show IdeViewState;
@@ -515,6 +517,16 @@ class _AgentSidePanelAreaState extends State<AgentSidePanelArea> {
 /// files, the agent's changes, its terminals), each a list at
 /// its left and, at its right, the tabs opened from it over the one in
 /// front.
+/// The changes panel's key of each conversation, so the Git menu the log
+/// shows above it commits what its box has (the panel is built here, not by
+/// the log).
+final Expando<GlobalKey<IdeGitCommitPanelState>> _changesKeys = Expando(
+  'changes panel',
+);
+
+GlobalKey<IdeGitCommitPanelState> _changesKeyOf(ChatSession session) =>
+    _changesKeys[session] ??= GlobalKey(debugLabel: 'changes ${session.root}');
+
 class AgentSidePanelView extends StatelessWidget {
   const AgentSidePanelView({
     super.key,
@@ -735,6 +747,9 @@ class AgentSidePanelView extends StatelessWidget {
     // Whether this project's files page shows the text search in place of
     // the tree (the header's magnifier).
     final searching = root != null && panel.searchShown(root);
+    // Whether it shows the file search in place of the tree (the header's
+    // Go to File).
+    final finding = root != null && panel.fileSearchShown(root);
     return _Page(
       key: const ValueKey(('page', SidePanelSection.files)),
       panel: panel,
@@ -776,6 +791,20 @@ class AgentSidePanelView extends StatelessWidget {
               ),
               onError: (error) => _showFileError(context, error),
             )
+          : finding
+          // The files found by name, opened here: the page's own tabs, not
+          // the IDE.
+          ? _FileQuickOpen(
+              files: files,
+              root: explorer.root,
+              roots: _isWorkspace ? roots : const [],
+              paths: _paths,
+              onOpen: (path) {
+                panel.open(session, FileOpenRequest(path));
+                panel.setFileSearchShown(explorer.root, false);
+              },
+              onClose: () => panel.setFileSearchShown(explorer.root, false),
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -787,10 +816,20 @@ class AgentSidePanelView extends StatelessWidget {
                   border: _titleBorder,
                   actions: [
                     IdePaneAction(
+                      icon: Codicons.goToFile,
+                      tooltip: l10n.sidePanelFindFile,
+                      onPressed: () {
+                        panel.setSearchShown(explorer.root, false);
+                        panel.setFileSearchShown(explorer.root, true);
+                      },
+                    ),
+                    IdePaneAction(
                       icon: Codicons.search,
                       tooltip: l10n.sidePanelSearchFiles,
-                      onPressed: () =>
-                          panel.setSearchShown(explorer.root, true),
+                      onPressed: () {
+                        panel.setFileSearchShown(explorer.root, false);
+                        panel.setSearchShown(explorer.root, true);
+                      },
                     ),
                     if (onAddFolder case final add? when _isWorkspace)
                       IdePaneAction(
@@ -913,8 +952,16 @@ class AgentSidePanelView extends StatelessWidget {
         onReopenOverlay: () => panel.reopenDiff(session),
         onAddToChat: session.draft.insertFiles,
         worktrees: worktreesOf?.call(git) ?? const IdeGitWorktreeChoice(),
+        onCommit: () {
+          final state = _changesKeyOf(session).currentState;
+          if (state != null) unawaited(state.commit());
+        },
+        onCommitAndPush: () {
+          final state = _changesKeyOf(session).currentState;
+          if (state != null) unawaited(state.commitAndPush());
+        },
         changes: IdeGitCommitPanel(
-          key: ValueKey(('scm', session.root, session)),
+          key: _changesKeyOf(session),
           host: host,
           session: panel.scmOf(session, git),
           sessionOf: (git) => panel.scmOf(session, git),
@@ -2240,6 +2287,263 @@ class _Tab extends StatelessWidget {
 
 /// The files page of a workspace with no folders yet: a button to add
 /// one.
+/// The files page's file search (Quick Open): the project's files found by
+/// name, the best first, opened in the page's own tabs as the tree's are.
+class _FileQuickOpen extends StatefulWidget {
+  const _FileQuickOpen({
+    required this.files,
+    required this.root,
+    required this.roots,
+    required this.paths,
+    required this.onOpen,
+    required this.onClose,
+  });
+
+  final IdeFileService files;
+  final String root;
+
+  /// A workspace's folders, by their names in the files' relative paths;
+  /// none for a folder's project.
+  final List<String> roots;
+  final p.Context paths;
+  final ValueChanged<String> onOpen;
+  final VoidCallback onClose;
+
+  @override
+  State<_FileQuickOpen> createState() => _FileQuickOpenState();
+}
+
+class _FileQuickOpenState extends State<_FileQuickOpen> {
+  static const _rowHeight = 26.0;
+  static const _limit = 60;
+
+  late final IdeFileIndex _index;
+  final _controller = TextEditingController();
+  final _focus = FocusNode(debugLabel: 'side panel file search');
+  final _scroll = ScrollController();
+
+  Timer? _debounce;
+  int _request = 0;
+  List<IdeFileHit>? _hits;
+  int _selected = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = IdeFileIndex(
+      widget.files,
+      widget.root,
+      roots: widget.roots.isEmpty ? null : widget.roots,
+      pathContext: widget.paths,
+    )..addListener(_indexChanged);
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      await _index.refresh();
+    } catch (error) {
+      // A folder that cannot be read leaves the list empty; the files it
+      // did list show.
+      debugPrint('file search not listed: $error');
+    }
+    if (mounted) unawaited(_find(''));
+  }
+
+  void _indexChanged() {
+    if (mounted) unawaited(_find(_controller.text));
+  }
+
+  void _changed(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 80), () {
+      unawaited(_find(text));
+    });
+    if (_selected != 0) setState(() => _selected = 0);
+  }
+
+  Future<void> _find(String query) async {
+    final request = ++_request;
+    if (mounted) setState(() => _loading = true);
+    List<IdeFileHit> hits;
+    try {
+      hits = await _index.find(query, limit: _limit);
+    } catch (error) {
+      debugPrint('file search failed: $error');
+      hits = const [];
+    }
+    if (!mounted || request != _request) return;
+    setState(() {
+      _hits = hits;
+      _loading = false;
+      if (_selected >= hits.length) {
+        _selected = hits.isEmpty ? 0 : hits.length - 1;
+      }
+    });
+  }
+
+  void _move(int delta) {
+    final hits = _hits;
+    if (hits == null || hits.isEmpty) return;
+    setState(() {
+      _selected = (_selected + delta) % hits.length;
+      if (_selected < 0) _selected += hits.length;
+    });
+    final offset = (_selected * _rowHeight - _rowHeight * 2).clamp(
+      0.0,
+      _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0,
+    );
+    if (_scroll.hasClients) _scroll.jumpTo(offset);
+  }
+
+  void _open(IdeFileHit hit) => widget.onOpen(hit.path);
+
+  void _openSelected() {
+    final hits = _hits;
+    if (hits == null || hits.isEmpty) return;
+    _open(hits[_selected.clamp(0, hits.length - 1)]);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _index
+      ..removeListener(_indexChanged)
+      ..dispose();
+    _controller.dispose();
+    _focus.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1),
+        const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1),
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: IdeInputBox(
+              controller: _controller,
+              focusNode: _focus,
+              autofocus: true,
+              placeholder: l10n.sidePanelFindFile,
+              onChanged: _changed,
+              onSubmitted: (_) => _openSelected(),
+              shortcuts: {
+                const SingleActivator(LogicalKeyboardKey.escape):
+                    widget.onClose,
+              },
+              toggles: [
+                IdeActionButton(
+                  icon: Codicons.close,
+                  tooltip: l10n.sidePanelCloseSearch,
+                  onPressed: widget.onClose,
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: _results(context)),
+        ],
+      ),
+    );
+  }
+
+  Widget _results(BuildContext context) {
+    final l10n = context.l10n;
+    final hits = _hits;
+    if (hits == null) {
+      return Center(
+        child: Text(
+          l10n.quickOpenLoadingFiles,
+          style: TextStyle(color: IdeListColors.description, fontSize: 12),
+        ),
+      );
+    }
+    if (hits.isEmpty) {
+      return Center(
+        child: Text(
+          _loading
+              ? l10n.quickOpenSearchingFiles
+              : _controller.text.isEmpty
+              ? l10n.quickOpenNoFiles
+              : l10n.quickOpenNoMatchingResults,
+          style: TextStyle(color: IdeListColors.description, fontSize: 12),
+        ),
+      );
+    }
+    return ListView.builder(
+      controller: _scroll,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: hits.length,
+      itemExtent: _rowHeight,
+      itemBuilder: (context, index) => _row(hits[index], index),
+    );
+  }
+
+  Widget _row(IdeFileHit hit, int index) {
+    final selected = index == _selected;
+    final name = widget.paths.basename(hit.path);
+    final relative = hit.relative;
+    final folder = relative.endsWith('/$name')
+        ? relative.substring(0, relative.length - name.length - 1)
+        : widget.paths.dirname(relative);
+    final foreground = selected
+        ? IdeListColors.activeSelectionForeground
+        : IdeListColors.foreground;
+    return MouseRegion(
+      onEnter: (_) {
+        if (_selected != index) setState(() => _selected = index);
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _open(hit),
+        child: Container(
+          height: _rowHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          color: selected ? IdeListColors.activeSelection : null,
+          child: Row(
+            children: [
+              FileIcon(hit.path, size: 16),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: foreground),
+                ),
+              ),
+              if (folder.isNotEmpty && folder != '.') ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    folder,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: IdeListColors.description,
+                    ),
+                  ),
+                ),
+              ] else
+                const Spacer(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyWorkspace extends StatelessWidget {
   const _EmptyWorkspace({this.onAddFolder});
 

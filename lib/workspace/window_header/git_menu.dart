@@ -1,14 +1,17 @@
-// The Git menu of the header's menu bar: the commands grouped as
-// Pull/Push, Commit, Changes, Branches, Remotes, Stash, Tags and Worktree.
-// Each entry is a label and an action, supplied by the workbench. What is
+// The Git menu: the commands grouped as Pull/Push, Commit, Changes,
+// Branches, Remotes, Stash, Tags and Worktree. Each entry is a label and an
+// action, supplied by the window or by the view that shows it. What is
 // unavailable in the current window (no repository, no folder) is left out
 // rather than shown disabled, as the app's other menus do.
+
+import 'package:flutter/widgets.dart';
 
 import '../../l10n/l10n.dart';
 import 'header_menu.dart';
 
-/// What the Git menu can do, supplied by the workbench. Every callback is
-/// optional: an absent one leaves its item out of the menu.
+/// What the Git menu can do, supplied by the workbench or the Source
+/// Control view. Every callback is optional: an absent one leaves its item
+/// out of the menu.
 class GitMenuActions {
   const GitMenuActions({
     this.pull,
@@ -76,18 +79,24 @@ List<HeaderMenuItem> gitMenuItems(AppLocalizations l10n, GitMenuActions a) {
         a.pushTo != null ||
         a.pushToForce != null ||
         a.fetch != null ||
+        a.fetchPrune != null ||
         a.fetchDelete != null ||
         a.fetchAll != null)
       const HeaderMenuItem.rule(),
     if (a.pull != null) item(l10n.scmPull, a.pull),
     if (a.pullRebase != null) item(l10n.gitMenuPullRebase, a.pullRebase),
     if (a.pullFrom != null) item(l10n.gitMenuPullFrom, a.pullFrom),
-    const HeaderMenuItem.rule(),
+    if (a.pull != null || a.pullRebase != null || a.pullFrom != null)
+      const HeaderMenuItem.rule(),
     if (a.push != null) item(l10n.scmPush, a.push),
     if (a.pushForce != null) item(l10n.gitMenuPushForce, a.pushForce),
     if (a.pushTo != null) item(l10n.gitMenuPushTo, a.pushTo),
     if (a.pushToForce != null) item(l10n.gitMenuPushToForce, a.pushToForce),
-    const HeaderMenuItem.rule(),
+    if (a.push != null ||
+        a.pushForce != null ||
+        a.pushTo != null ||
+        a.pushToForce != null)
+      const HeaderMenuItem.rule(),
     if (a.fetch != null) item(l10n.scmFetch, a.fetch),
     if (a.fetchPrune != null) item(l10n.gitMenuFetchPrune, a.fetchPrune),
     if (a.fetchDelete != null) item(l10n.gitMenuFetchDelete, a.fetchDelete),
@@ -100,7 +109,8 @@ List<HeaderMenuItem> gitMenuItems(AppLocalizations l10n, GitMenuActions a) {
     if (a.clone != null) item(l10n.gitMenuClone, a.clone),
     if (a.checkout != null) item(l10n.gitMenuCheckout, a.checkout),
     if (a.fetch != null) item(l10n.scmFetch, a.fetch),
-    const HeaderMenuItem.rule(),
+    if (a.clone != null || a.checkout != null || a.fetch != null)
+      const HeaderMenuItem.rule(),
     if (a.commit != null || a.commitAndPush != null)
       submenu(l10n.gitMenuCommit, [
         if (a.commit != null) item(l10n.gitMenuCommitChanges, a.commit),

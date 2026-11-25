@@ -129,13 +129,17 @@ GitMenuActions ideGitMenuActions({
         return false;
       }),
     ),
-    tag: () => _newTag(context, git, run),
-    worktree: () => _newWorktree(context, git, run),
-    showOutput: () => unawaited(_showGitOutput(context, git)),
+    tag: () => ideGitNewTag(context, git, run),
+    worktree: () => ideGitNewWorktree(context, git, run),
+    showOutput: () => unawaited(ideGitShowOutput(context, git)),
   );
 }
 
-Future<void> _showGitOutput(BuildContext context, IdeGitRepository git) async {
+/// Shows `git status` in a dialog: the Git menu's Show Git Output.
+Future<void> ideGitShowOutput(
+  BuildContext context,
+  IdeGitRepository git,
+) async {
   final output = await git.service.run(['status']);
   final text = '${output.stdout}${output.stderr}';
   await showIdeDialog(
@@ -147,7 +151,9 @@ Future<void> _showGitOutput(BuildContext context, IdeGitRepository git) async {
   );
 }
 
-Future<void> _newTag(
+/// Asks for a name and message, then tags HEAD with them: the Git menu's
+/// Tags.
+Future<void> ideGitNewTag(
   BuildContext context,
   IdeGitRepository git,
   void Function(Future<void> Function()) run,
@@ -172,7 +178,9 @@ Future<void> _newTag(
   run(() => git.tag(name, head.id, message: message.isEmpty ? null : message));
 }
 
-Future<void> _newWorktree(
+/// Asks for a folder name and makes a worktree beside the repository, on a
+/// new branch of that name: the Git menu's Worktree.
+Future<void> ideGitNewWorktree(
   BuildContext context,
   IdeGitRepository git,
   void Function(Future<void> Function()) run,

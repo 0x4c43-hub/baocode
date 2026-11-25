@@ -2807,12 +2807,6 @@ abstract class AppLocalizations {
   /// Menu bar menu.
   ///
   /// In en, this message translates to:
-  /// **'Git'**
-  String get menuGit;
-
-  /// Menu bar menu.
-  ///
-  /// In en, this message translates to:
   /// **'Edit'**
   String get menuEdit;
 
@@ -2821,6 +2815,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'View'**
   String get menuView;
+
+  /// Menu bar menu.
+  ///
+  /// In en, this message translates to:
+  /// **'Git'**
+  String get menuGit;
 
   /// Menu bar menu.
   ///
@@ -3271,6 +3271,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Search the project\'s files'**
   String get sidePanelSearchFiles;
+
+  /// The files page's header button that shows the file search in place of the tree, and that search's input placeholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Search files by name'**
+  String get sidePanelFindFile;
 
   /// The files page's header button that brings the tree back.
   ///
@@ -23796,6 +23802,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add Worktree'**
   String get gitMenuNewWorktree;
+
+  /// No description provided for @zmodemReceiving.
+  ///
+  /// In en, this message translates to:
+  /// **'Receiving'**
+  String get zmodemReceiving;
+
+  /// No description provided for @zmodemSending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending'**
+  String get zmodemSending;
+
+  /// No description provided for @zmodemChooseSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose where to save…'**
+  String get zmodemChooseSave;
+
+  /// No description provided for @zmodemChooseFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose files to send…'**
+  String get zmodemChooseFiles;
+
+  /// No description provided for @zmodemCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel transfer'**
+  String get zmodemCancel;
 }
 
 class _AppLocalizationsDelegate

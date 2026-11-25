@@ -529,6 +529,7 @@
   "sidePanelSelectTerminal": "选择一个后台任务以查看输出",
   "sidePanelNoFolder": "这个对话没有项目文件夹",
   "sidePanelSearchFiles": "搜索项目文本",
+  "sidePanelFindFile": "按文件名搜索文件",
   "sidePanelCloseSearch": "关闭搜索",
   "sidePanelShowList": "显示列表",
   "sidePanelHideList": "隐藏列表",
@@ -3956,5 +3957,10 @@
   "gitMenuNoRemote": "没有可用的远程仓库。",
   "gitMenuPickRemote": "选择远程仓库",
   "gitMenuPickBranch": "选择分支",
-  "gitMenuNewWorktree": "添加工作树"
+  "gitMenuNewWorktree": "添加工作树",
+  "zmodemReceiving": "正在接收",
+  "zmodemSending": "正在发送",
+  "zmodemChooseSave": "选择保存位置…",
+  "zmodemChooseFiles": "选择要发送的文件…",
+  "zmodemCancel": "取消传输"
 }

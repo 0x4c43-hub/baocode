@@ -1,9 +1,9 @@
-// The header's Git menu: its groups and the two-level Pull, Push submenu.
+// The Git menu: its groups and the two-level Pull, Push submenu.
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:baocode/l10n/app_localizations.dart';
+import 'package:baocode/l10n/app_localizations_en.dart';
 import 'package:baocode/workspace/window_header/git_menu.dart';
 import 'package:baocode/workspace/window_header/header_menu.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final l10n = AppLocalizationsEn();
@@ -30,27 +30,25 @@ void main() {
       ),
     );
     final labels = [
-      for (final item in items) if (!item.rule) item.label,
+      for (final item in items)
+        if (!item.rule) item.label,
     ];
-    expect(
-      labels,
-      [
-        l10n.scmPull,
-        l10n.scmPush,
-        l10n.gitMenuClone,
-        l10n.gitMenuCheckout,
-        l10n.scmFetch,
-        l10n.gitMenuCommit,
-        l10n.gitMenuChanges,
-        l10n.gitMenuPullPush,
-        l10n.gitMenuBranches,
-        l10n.gitMenuRemotes,
-        l10n.gitMenuStash,
-        l10n.gitMenuTags,
-        l10n.gitMenuWorktree,
-        l10n.gitMenuShowOutput,
-      ],
-    );
+    expect(labels, [
+      l10n.scmPull,
+      l10n.scmPush,
+      l10n.gitMenuClone,
+      l10n.gitMenuCheckout,
+      l10n.scmFetch,
+      l10n.gitMenuCommit,
+      l10n.gitMenuChanges,
+      l10n.gitMenuPullPush,
+      l10n.gitMenuBranches,
+      l10n.gitMenuRemotes,
+      l10n.gitMenuStash,
+      l10n.gitMenuTags,
+      l10n.gitMenuWorktree,
+      l10n.gitMenuShowOutput,
+    ]);
     // The first rule falls between Fetch and the grouping menus.
     expect(items[5], isA<HeaderMenuItem>().having((i) => i.rule, 'rule', true));
   });
@@ -78,27 +76,28 @@ void main() {
       (item) => !item.rule && item.label == l10n.gitMenuPullPush,
     );
     final submenu = pullPush.submenu!;
-    final labels = [for (final item in submenu) if (!item.rule) item.label];
-    expect(
-      labels,
-      [
-        l10n.gitMenuSync,
-        l10n.scmPull,
-        l10n.gitMenuPullRebase,
-        l10n.gitMenuPullFrom,
-        l10n.scmPush,
-        l10n.gitMenuPushForce,
-        l10n.gitMenuPushTo,
-        l10n.gitMenuPushToForce,
-        l10n.scmFetch,
-        l10n.gitMenuFetchPrune,
-        l10n.gitMenuFetchDelete,
-        l10n.gitMenuFetchAll,
-      ],
-    );
+    final labels = [
+      for (final item in submenu)
+        if (!item.rule) item.label,
+    ];
+    expect(labels, [
+      l10n.gitMenuSync,
+      l10n.scmPull,
+      l10n.gitMenuPullRebase,
+      l10n.gitMenuPullFrom,
+      l10n.scmPush,
+      l10n.gitMenuPushForce,
+      l10n.gitMenuPushTo,
+      l10n.gitMenuPushToForce,
+      l10n.scmFetch,
+      l10n.gitMenuFetchPrune,
+      l10n.gitMenuFetchDelete,
+      l10n.gitMenuFetchAll,
+    ]);
     // Rules divide Sync, Pull, Push and Fetch; each action is callable.
     final actions = [
-      for (final item in submenu) if (!item.rule) item.onSelected,
+      for (final item in submenu)
+        if (!item.rule) item.onSelected,
     ];
     for (final action in actions) {
       action!();

@@ -38,6 +38,7 @@ import 'terminal_service.dart';
 import 'terminal_tabs.dart';
 import 'terminal_tasks.dart';
 import 'terminal_view.dart';
+import 'terminal_zmodem.dart';
 
 /// VS Code's `DEFAULT_COMMANDS_TO_SKIP_SHELL`
 /// (src/vs/workbench/contrib/terminal/common/terminal.ts): the keys of
@@ -255,37 +256,60 @@ class TerminalPanel extends StatelessWidget {
       final files = this.files;
       final list = files == null ? const <KernelTask>[] : [...?tasks?.tasks];
       final task = list.where((task) => task.id == shownTask).firstOrNull;
+      Widget content = task != null
+          ? TerminalPreview(
+              key: ValueKey(('task', task.id)),
+              task: task,
+              command: tasks!.commandOf(task),
+              files: files!,
+              onStop: () => tasks.stop(task),
+              root: tasks.root,
+              linkStat: terminals.backend.linkStat,
+              skipShell: skipShell,
+              onOpenLink: onOpenLink,
+            )
+          : active == null
+          ? const SizedBox.shrink()
+          : switch ((hosts, place)) {
+              (final hosts?, final place?) => HostedTerminalView(
+                key: ObjectKey(active),
+                hosts: hosts,
+                place: place,
+                instance: active,
+                takes: shown,
+                builder: (mirror, onActivate) =>
+                    _view(active, mirror: mirror, onActivate: onActivate),
+              ),
+              _ => _view(active),
+            };
+      if (active != null && task == null) {
+        content = ListenableBuilder(
+          listenable: active,
+          builder: (context, child) {
+            final transfer = active.zmodem;
+            return Stack(
+              children: [
+                Positioned.fill(child: child!),
+                if (transfer != null && transfer.active)
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 12,
+                    child: ZmodemBanner(
+                      session: transfer,
+                      onCancel: active.cancelZmodem,
+                    ),
+                  ),
+              ],
+            );
+          },
+          child: content,
+        );
+      }
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: task != null
-                ? TerminalPreview(
-                    key: ValueKey(('task', task.id)),
-                    task: task,
-                    command: tasks!.commandOf(task),
-                    files: files!,
-                    onStop: () => tasks.stop(task),
-                    root: tasks.root,
-                    linkStat: terminals.backend.linkStat,
-                    skipShell: skipShell,
-                    onOpenLink: onOpenLink,
-                  )
-                : active == null
-                ? const SizedBox.shrink()
-                : switch ((hosts, place)) {
-                    (final hosts?, final place?) => HostedTerminalView(
-                      key: ObjectKey(active),
-                      hosts: hosts,
-                      place: place,
-                      instance: active,
-                      takes: shown,
-                      builder: (mirror, onActivate) =>
-                          _view(active, mirror: mirror, onActivate: onActivate),
-                    ),
-                    _ => _view(active),
-                  },
-          ),
+          Expanded(child: content),
           if (terminals.instances.length > 1 || list.isNotEmpty)
             SizedBox(
               width: list.isEmpty
@@ -543,4 +567,107 @@ class _SingleTabState extends State<_SingleTab> {
       ),
     ),
   );
+}
+
+/// The progress of an `rz`/`sz` in the terminal, over its last lines.
+class ZmodemBanner extends StatelessWidget {
+  const ZmodemBanner({
+    super.key,
+    required this.session,
+    required this.onCancel,
+  });
+
+  final ZmodemSession session;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final waiting = session.waitingForUser;
+    final receiving = session.direction != ZmodemDirection.upload;
+    final title = waiting
+        ? (receiving ? l10n.zmodemChooseSave : l10n.zmodemChooseFiles)
+        : (receiving ? l10n.zmodemReceiving : l10n.zmodemSending);
+    final total = session.total;
+    final progress = total > 0
+        ? (session.transferred / total).clamp(0.0, 1.0)
+        : null;
+    final files = session.fileCount > 1
+        ? '  ${session.fileIndex}/${session.fileCount}'
+        : '';
+    final detail = waiting
+        ? (session.name ?? '')
+        : '${session.name ?? ''}${session.name == null ? '' : '  '}'
+              '${_zmodemBytes(session.transferred)}'
+              '${total > 0 ? ' / ${_zmodemBytes(total)}' : ''}$files';
+    return Material(
+      color: theme.colorScheme.surface,
+      elevation: 6,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 9, 4, 9),
+        child: Row(
+          children: [
+            Icon(
+              receiving ? Codicons.cloudDownload : Codicons.cloudUpload,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  if (!waiting) ...[
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 3,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            IconButton(
+              icon: const Icon(Codicons.close, size: 14),
+              tooltip: l10n.zmodemCancel,
+              visualDensity: VisualDensity.compact,
+              onPressed: onCancel,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _zmodemBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
 }

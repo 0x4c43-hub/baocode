@@ -1429,13 +1429,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuFile => 'File';
 
   @override
-  String get menuGit => 'Git';
-
-  @override
   String get menuEdit => 'Edit';
 
   @override
   String get menuView => 'View';
+
+  @override
+  String get menuGit => 'Git';
 
   @override
   String get menuHelp => 'Help';
@@ -1797,6 +1797,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sidePanelSearchFiles => 'Search the project\'s files';
+
+  @override
+  String get sidePanelFindFile => 'Search files by name';
 
   @override
   String get sidePanelCloseSearch => 'Close the search';
@@ -14689,4 +14692,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gitMenuNewWorktree => 'Add Worktree';
+
+  @override
+  String get zmodemReceiving => 'Receiving';
+
+  @override
+  String get zmodemSending => 'Sending';
+
+  @override
+  String get zmodemChooseSave => 'Choose where to save…';
+
+  @override
+  String get zmodemChooseFiles => 'Choose files to send…';
+
+  @override
+  String get zmodemCancel => 'Cancel transfer';
 }

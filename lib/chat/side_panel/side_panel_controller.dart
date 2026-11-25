@@ -482,6 +482,20 @@ class AgentSidePanel extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  /// The projects whose files page shows the file search (Quick Open)
+  /// rather than the tree.
+  final Set<String> _fileSearching = {};
+
+  /// Whether the project in [root] shows its files page's file search.
+  bool fileSearchShown(String root) => _fileSearching.contains(root);
+
+  void setFileSearchShown(String root, bool shown) {
+    final changed = shown
+        ? _fileSearching.add(root)
+        : _fileSearching.remove(root);
+    if (changed) notifyListeners();
+  }
+
   /// Has the tree of the workspace in [root] show [roots], its folders
   /// now.
   void setRoots(String root, List<String> roots) =>
