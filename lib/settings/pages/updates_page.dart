@@ -229,23 +229,18 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
   /// upstream publishes, and the build that would take it.
   Widget _sourceCard(BuildContext context, SourceUpdateController source) {
     final l10n = context.l10n;
-    final upstream = source.upstreamVersion;
     final busy =
         source.status == SourceUpdateStatus.checking ||
         source.status == SourceUpdateStatus.building;
-    final published = upstream == null
-        ? ''
-        : [
-            upstream.marketing,
-            if (upstream.build != 0) '+${upstream.build}',
-          ].join();
     final status = switch (source.status) {
       SourceUpdateStatus.idle => null,
       SourceUpdateStatus.checking => l10n.updateChecking,
       SourceUpdateStatus.upToDate => l10n.sourceUpdateUpToDate(
         source.localVersion.marketing,
       ),
-      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(published),
+      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(
+        source.upstreamLabel,
+      ),
       SourceUpdateStatus.building => l10n.sourceUpdateBuilding,
       SourceUpdateStatus.ready => l10n.sourceUpdateReady,
       SourceUpdateStatus.failed => l10n.sourceUpdateFailed(source.error ?? ''),

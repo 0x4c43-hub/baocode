@@ -204,8 +204,17 @@ echo "==> Building"
 # this one), else our own, carried in the app.
 remote_flags=(--carry-remote)
 remembered="$HOME/Library/Application Support/BaoCode2/remote-version"
+protocol=""
 version_in() {
-  if [ -f "$1" ]; then tr -d '[:space:]' <"$1"; fi
+  if [ -f "$1" ]; then awk 'NR == 1 { print $1 }' "$1"; fi
+}
+# The protocol an app and its server speak (packages/bao_remote/lib/src/
+# protocol.dart). A server published for the same version is reused only
+# while this is the one it was reused at: a commit that changed it changed
+# what the two may say, version number or no.
+protocol_of() {
+  git show "$1:packages/bao_remote/lib/src/protocol.dart" 2>/dev/null |
+    sed -n 's/.*static const version = \([0-9][0-9]*\).*/\1/p' | head -1
 }
 if [ "$CARRY_REMOTE" = 0 ]; then
   app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -1)"
@@ -213,6 +222,12 @@ if [ "$CARRY_REMOTE" = 0 ]; then
   release_build="${app_version#*+}"
   [ "$release_build" = "$app_version" ] && release_build=0
   wanted="${release_prefix}.${release_build}"
+  protocol="$(protocol_of HEAD)"
+  remembered_version=""
+  remembered_protocol=""
+  if [ -f "$remembered" ]; then
+    read -r remembered_version remembered_protocol <"$remembered" || true
+  fi
   published_version=""
   for candidate in \
     "$(version_in /Applications/BaoCode.app/Contents/Resources/remote/VERSION)" \
@@ -235,6 +250,13 @@ if [ "$CARRY_REMOTE" = 0 ]; then
       fi
     fi
   fi
+  if [ -n "$published_version" ] &&
+    [ -n "$remembered_protocol" ] && [ -n "$protocol" ] &&
+    [ "$remembered_protocol" != "$protocol" ]; then
+    echo "  $remembered_version's server speaks protocol" \
+      "$remembered_protocol, this build $protocol: not reused"
+    published_version=""
+  fi
   if [ -n "$published_version" ]; then
     echo "  Remote server: reusing $published_version"
     remote_flags=(--remote-release "$published_version")
@@ -251,7 +273,7 @@ if ! dart run tool/build_macos.dart "${remote_flags[@]}"; then
 fi
 if [ "${remote_flags[0]}" = --remote-release ]; then
   mkdir -p "$(dirname "$remembered")"
-  printf '%s\n' "${remote_flags[1]}" >"$remembered"
+  printf '%s %s\n' "${remote_flags[1]}" "$protocol" >"$remembered"
 fi
 
 install_built

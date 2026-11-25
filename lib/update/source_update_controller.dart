@@ -71,6 +71,16 @@ class SourceUpdateController extends ChangeNotifier {
       upstreamVersion != null &&
       upstreamVersion!.compareTo(localVersion) > 0;
 
+  /// The version upstream publishes, as the user is shown it (`2.0.7+40`).
+  String get upstreamLabel {
+    final version = upstreamVersion;
+    if (version == null) return '';
+    return [
+      version.marketing,
+      if (version.build != 0) '+${version.build}',
+    ].join();
+  }
+
   /// This checkout's commit, short.
   String? localCommit;
 

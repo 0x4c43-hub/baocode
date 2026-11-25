@@ -141,6 +141,7 @@ import 'stash/stash_controller.dart';
 import 'stash/stash_thread_view.dart' show sidebarStashes;
 import 'stash/stash_view.dart';
 import 'stash/stash_welcome.dart' show showStashWelcome;
+import 'update/source_update_controller.dart';
 import 'workspace/agent_work_path.dart';
 import 'workspace/aside_card.dart';
 import 'workspace/chat_branch_bar.dart';
@@ -1930,11 +1931,36 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
   /// Check for Updates...: what it finds told of in this window.
   void _checkForUpdates() {
     final updates = widget.settings?.updates;
-    if (updates == null) {
+    if (updates != null) {
+      unawaited(updates.checkNow(_notifications, context.l10n));
+      return;
+    }
+    // BaoCode 2: its own, from the checkout it was built from.
+    final source = widget.settings?.sourceUpdates;
+    if (source == null) {
       _notifications.notify(IdeSeverity.info, context.l10n.updateUnsupported);
       return;
     }
-    unawaited(updates.checkNow(_notifications, context.l10n));
+    unawaited(_checkSourceUpdates(source));
+  }
+
+  Future<void> _checkSourceUpdates(SourceUpdateController source) async {
+    final l10n = context.l10n;
+    await source.check();
+    if (!mounted) return;
+    final message = switch (source.status) {
+      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(
+        source.upstreamLabel,
+      ),
+      SourceUpdateStatus.upToDate => l10n.sourceUpdateUpToDate(
+        source.localVersion.marketing,
+      ),
+      SourceUpdateStatus.failed => l10n.sourceUpdateFailed(
+        source.error ?? '',
+      ),
+      _ => null,
+    };
+    if (message != null) _notifications.notify(IdeSeverity.info, message);
   }
 
   /// The chords of a sequence typed so far (⌘K of ⌘K ⌘S).
