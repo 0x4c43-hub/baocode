@@ -157,8 +157,15 @@ class ZmodemSession {
   int _nextFile = 0;
   RandomAccessFile? _upload;
   int _uploadSize = 0;
-  int _uploadOffset = 0;
   _SendPhase _sendPhase = _SendPhase.idle;
+  // At most one loop reads [_upload] at a time: a dart:io RandomAccessFile
+  // throws "An async operation is currently pending" when two reads (or a
+  // read and a close) overlap on the same handle. A ZRPOS that arrives while
+  // data is going out only records where to resume; the running loop picks
+  // it up at the next chunk boundary.
+  Future<void>? _uploadLoop;
+  int? _uploadRestart;
+  int _uploadGeneration = 0;
 
   // The receiver's ZRINIT asked for control characters to be escaped.
   bool _escapeCtl = false;
@@ -436,8 +443,7 @@ class ZmodemSession {
         break;
       case _zrpos:
         if (_direction == ZmodemDirection.upload) {
-          _uploadOffset = header.offset;
-          unawaited(_sendUploadData());
+          _requestUploadData(header.offset);
         }
         break;
       case _zdata:
@@ -446,7 +452,7 @@ class ZmodemSession {
           final offset = header.offset;
           if (offset != _offset) {
             if (offset < _offset) {
-              unawaited(_truncateDownload(offset));
+              _truncateDownload(offset);
             } else {
               _discardData = true;
               _sendHeader(_zrpos, data: _le32(_offset));
@@ -568,10 +574,15 @@ class ZmodemSession {
     }
   }
 
-  Future<void> _truncateDownload(int offset) async {
+  // Synchronous on purpose: [_writeDownload] writes synchronously, and an
+  // async truncate would overlap with the next subpacket's write on the same
+  // handle ("An async operation is currently pending").
+  void _truncateDownload(int offset) {
+    final file = _download;
+    if (file == null) return;
     try {
-      await _download?.truncate(offset);
-      await _download?.setPosition(offset);
+      file.truncateSync(offset);
+      file.setPositionSync(offset);
       _offset = offset;
       _transferred = offset;
       _notify();
@@ -662,7 +673,15 @@ class ZmodemSession {
 
   void _nextUploadFile() {
     if (!_active) return;
-    unawaited(_closeUpload());
+    // Any loop still finishing belongs to the file we are leaving behind.
+    _uploadGeneration++;
+    _uploadRestart = null;
+    unawaited(_startNextUpload());
+  }
+
+  Future<void> _startNextUpload() async {
+    await _closeUpload();
+    if (!_active) return;
     if (_nextFile >= _files.length) {
       _sendFin();
       return;
@@ -673,7 +692,7 @@ class ZmodemSession {
     _transferred = 0;
     _total = 0;
     _notify();
-    unawaited(_offerUpload(path));
+    await _offerUpload(path);
   }
 
   Future<void> _offerUpload(String path) async {
@@ -689,7 +708,6 @@ class ZmodemSession {
       _upload = raf;
       _uploadSize = size;
       _total = size;
-      _uploadOffset = 0;
       _sendPhase = _SendPhase.waitZrpos;
       final name = p.basename(path);
       final info = utf8.encode(
@@ -700,23 +718,55 @@ class ZmodemSession {
       _sendSubpacket(info, _zcrcW);
       _notify();
       _resetIdle();
+      // The receiver may have asked for a position while the file was opening.
+      _startUploadLoop();
     } on Object catch (error) {
+      if (!_active) return;
       _finish(error: 'could not read $path: $error');
     }
   }
 
-  Future<void> _sendUploadData() async {
+  bool _isSending(int generation) =>
+      _active && generation == _uploadGeneration;
+
+  void _startUploadLoop() {
+    if (!_active || _upload == null || _uploadLoop != null) return;
+    final generation = _uploadGeneration;
+    _uploadLoop = _runUpload(generation);
+  }
+
+  void _requestUploadData(int offset) {
+    _uploadRestart = offset;
+    _startUploadLoop();
+  }
+
+  Future<void> _runUpload(int generation) async {
+    try {
+      while (_isSending(generation)) {
+        final offset = _uploadRestart;
+        if (offset == null) break;
+        _uploadRestart = null;
+        await _sendUploadData(generation, offset);
+      }
+    } finally {
+      if (generation == _uploadGeneration) _uploadLoop = null;
+    }
+  }
+
+  Future<void> _sendUploadData(int generation, int start) async {
     final file = _upload;
     if (file == null || !_active) return;
-    if (_uploadOffset > _uploadSize) {
+    if (start < 0 || start > _uploadSize) {
       _finish(error: 'the other end asked for a position past the file');
       return;
     }
     _sendPhase = _SendPhase.sending;
     try {
-      await file.setPosition(_uploadOffset);
-      _transferred = _uploadOffset;
-      var offset = _uploadOffset;
+      await file.setPosition(start);
+      if (!_isSending(generation)) return;
+      var offset = start;
+      _transferred = offset;
+      _notify();
       var first = true;
       var remaining = _uploadSize - offset;
       if (remaining == 0) {
@@ -724,8 +774,16 @@ class ZmodemSession {
         _sendSubpacket(const [], _zcrce);
         first = false;
       }
-      while (remaining > 0 && _active) {
+      while (remaining > 0) {
+        if (!_isSending(generation)) return;
+        if (_uploadRestart != null) {
+          // The receiver moved the position. End the current frame so its
+          // parser is looking for headers again, then restart from there.
+          if (!first) _sendSubpacket(const [], _zcrce);
+          return;
+        }
         final chunk = await file.read(math.min(limits.sendChunk, remaining));
+        if (!_isSending(generation)) return;
         if (chunk.isEmpty) break;
         if (first) {
           _sendHeader(_zdata, data: _le32(offset), binary: true);
@@ -734,7 +792,6 @@ class ZmodemSession {
         remaining -= chunk.length;
         offset += chunk.length;
         _sendSubpacket(chunk, remaining == 0 ? _zcrce : _zcrCG);
-        _uploadOffset = offset;
         _transferred = offset;
         _notify();
         _resetIdle();
@@ -743,11 +800,14 @@ class ZmodemSession {
           await Future<void>.delayed(const Duration(milliseconds: 1));
         }
       }
-      if (!_active) return;
-      _sendHeader(_zeof, data: _le32(offset));
+      if (!_isSending(generation) || _uploadRestart != null) return;
+      // Move to the next phase before writing ZEOF: a receiver that answers
+      // immediately must be understood as ready for the next file.
       _sendPhase = _SendPhase.waitZrinit;
+      _sendHeader(_zeof, data: _le32(offset));
       _resetIdle();
     } on Object catch (error) {
+      if (!_isSending(generation)) return;
       _finish(error: 'could not send the file: $error');
     }
   }
@@ -763,6 +823,16 @@ class ZmodemSession {
   Future<void> _closeUpload() async {
     final file = _upload;
     _upload = null;
+    _uploadRestart = null;
+    final loop = _uploadLoop;
+    if (loop != null) {
+      try {
+        await loop;
+      } on Object {
+        // The loop reports its own failures.
+      }
+    }
+    if (identical(_uploadLoop, loop)) _uploadLoop = null;
     if (file == null) return;
     try {
       await file.close();
