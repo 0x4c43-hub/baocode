@@ -206,7 +206,10 @@ class SourceUpdateController extends ChangeNotifier {
     }
     _set(SourceUpdateStatus.building);
     _watching?.cancel();
-    _watching = Timer.periodic(const Duration(seconds: 2), (_) => _readLog());
+    _watching = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(_readLog()),
+    );
     return true;
   }
 
@@ -216,7 +219,7 @@ class SourceUpdateController extends ChangeNotifier {
   }
 
   /// What the build last wrote: its markers say how it went.
-  void _readLog() {
+  Future<void> _readLog() async {
     if (status != SourceUpdateStatus.building) return;
     final String text;
     try {
@@ -251,6 +254,9 @@ class SourceUpdateController extends ChangeNotifier {
     if (text.contains('==> Ready')) {
       _stopWatching();
       progress = 1;
+      // What was built is the checkout after the merge, not the version the
+      // check found: the toast names the build, not the one it replaces.
+      sourceVersion = await _versionOfHead() ?? sourceVersion;
       _set(SourceUpdateStatus.ready);
     } else if (text.contains('==> Failed')) {
       _stopWatching();
