@@ -20,6 +20,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# This machine's signing identity, if it has one: signing every build with
+# the same certificate keeps the app's privacy grants (macOS TCC) across
+# rebuilds. Not kept in the repository (tool/custom-signing.env).
+if [ -f "$ROOT/tool/custom-signing.env" ]; then
+  # shellcheck disable=SC1091
+  . "$ROOT/tool/custom-signing.env"
+fi
+
+# create-dmg's window, laid out in Finder, pops up at whoever is using the
+# machine; a local build skips it (BAOCODE_DMG_PRETTY=1 brings it back).
+export BAOCODE_DMG_PRETTY="${BAOCODE_DMG_PRETTY:-0}"
+
 UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/baocode-dev/baocode.git}"
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 DEST="${BAOCODE2_APP:-/Applications/BaoCode 2.app}"
@@ -274,6 +287,17 @@ fi
 if [ "${remote_flags[0]}" = --remote-release ]; then
   mkdir -p "$(dirname "$remembered")"
   printf '%s %s\n' "${remote_flags[1]}" "$protocol" >"$remembered"
+elif [ -f "$remembered" ]; then
+  # Carried our own: nothing published was reused, so what was remembered
+  # names an older release and would only be looked at again to be refused.
+  rm -f "$remembered"
 fi
+
+# create-dmg mounts a staging image to lay its window out; one it leaves
+# mounted keeps a Finder window around, which pops up beside the app.
+for mounted in /Volumes/dmg.*; do
+  [ -d "$mounted" ] || continue
+  hdiutil detach "$mounted" -force >/dev/null 2>&1 || true
+done
 
 install_built

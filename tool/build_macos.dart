@@ -272,25 +272,33 @@ Future<void> main(List<String> arguments) async {
     // icons where it expects them). create-dmg lays the window out with
     // Finder, which asks this terminal for permission to the first time.
     if (dmg.existsSync()) dmg.deleteSync();
+    // Finder lays the window out over the screen while the image is
+    // mounted, which pops an installer window at whoever is using the
+    // machine. A local build (tool/sync_custom.sh) says so, and gets the
+    // image without it: the same app, no window.
+    final pretty = Platform.environment['BAOCODE_DMG_PRETTY'] != '0';
     await _run(createDmg, [
+      if (!pretty) '--skip-jenkins',
       '--volname',
       'BaoCode ${version.marketing}',
-      '--background',
-      '${root.path}/$_dmgBackgroundRelative',
-      '--window-size',
-      '660',
-      '400',
-      '--icon-size',
-      '128',
-      '--icon',
-      'BaoCode.app',
-      '165',
-      '145',
-      '--hide-extension',
-      'BaoCode.app',
-      '--app-drop-link',
-      '495',
-      '145',
+      if (pretty) ...[
+        '--background',
+        '${root.path}/$_dmgBackgroundRelative',
+        '--window-size',
+        '660',
+        '400',
+        '--icon-size',
+        '128',
+        '--icon',
+        'BaoCode.app',
+        '165',
+        '145',
+        '--hide-extension',
+        'BaoCode.app',
+        '--app-drop-link',
+        '495',
+        '145',
+      ],
       // LZMA: a quarter smaller than the default UDZO's zlib; opens on
       // macOS 10.15 and later (the app needs 12).
       '--format',
@@ -429,6 +437,18 @@ class _Signing {
   final String identity;
   bool get adHoc => identity == '-';
 
+  /// The hardened runtime, and a secure timestamp: notarising asks for
+  /// them, and the runtime's library validation needs the Team ID that
+  /// Apple's certificates give. A certificate made on this machine has
+  /// none, and its app would fail to load its own frameworks at launch
+  /// (dyld: different Team IDs), so only a Developer ID takes them — or
+  /// `BAOCODE_MACOS_SIGN_HARDENED=1` for a Developer ID named by its SHA-1.
+  bool get hardened {
+    final asked = Platform.environment['BAOCODE_MACOS_SIGN_HARDENED'];
+    if (asked != null) return asked != '0';
+    return identity.startsWith('Developer ID');
+  }
+
   final ({String key, String keyId, String issuer})? notary;
 
   /// Signs the .app inside out: its frameworks, the browser's host, then the
@@ -477,7 +497,7 @@ class _Signing {
   /// FlutterMacOS.framework at launch.
   Future<void> sign(String path, {String? entitlements}) => _run('codesign', [
     '--force',
-    if (!adHoc) ...['--options', 'runtime', '--timestamp'],
+    if (hardened) ...['--options', 'runtime', '--timestamp'],
     if (entitlements != null) ...['--entitlements', entitlements],
     '--sign',
     identity,

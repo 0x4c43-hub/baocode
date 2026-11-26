@@ -70,3 +70,4 @@ tool/exthost_codegen/node_modules/
 .dev.vars*
 .env
 .env.*
+tool/custom-signing.env
