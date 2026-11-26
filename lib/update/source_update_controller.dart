@@ -36,7 +36,7 @@ class SourceUpdateController extends ChangeNotifier {
     this.upstreamBranch = 'main',
     this.releasesUrl = defaultReleasesUrl,
     this.autoUpdate,
-    this.checkEvery = const Duration(hours: 6),
+    this.checkEvery = const Duration(minutes: 15),
   });
 
   /// Where the releases' artifacts are listed, as the original app's
