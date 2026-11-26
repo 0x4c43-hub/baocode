@@ -111,7 +111,7 @@ void main() {
     final own = FakeGit(testRoot)..status = '## main\x00 M README.md\x00';
     final app = FakeGit(inRoot('app'))
       ..status = '## dev\x00 M main.dart\x00?? new.dart\x00';
-    await pumpWorkbench(
+    final workspace = await pumpWorkbench(
       tester,
       const {'README.md': '', 'app/main.dart': '', 'app/new.dart': ''},
       git: own.repository(),
@@ -124,13 +124,27 @@ void main() {
 
     await chord(tester, LogicalKeyboardKey.keyG, control: true, shift: true);
     await tester.pumpAndSettle();
-    // Every repository under its header in the local changes (#76): its
-    // branch after its name, and its changes.
+    // The folder's own repository under its header in the local changes
+    // (#1316): its branch after its name, and its changes; the nested one
+    // is picked in the log's repository menu.
     expect(find.text('Repositories'), findsNothing);
-    final appHeader = find.byKey(ValueKey('r:${inRoot('app')}')).first;
+    expect(find.text('README.md'), findsWidgets);
+    expect(find.text('new.dart'), findsNothing);
+    expect(_statusBar('dev'), findsNothing);
+    expect(_statusBar('main'), findsOneWidget);
+
+    // Picked, the nested repository is the one shown (the status bar's
+    // branch).
+    workspace.selectRepository(
+      workspace.repositories
+          .firstWhere((entry) => entry.$2.service.root == inRoot('app'))
+          .$2,
+    );
+    await tester.pumpAndSettle();
+    expect(_statusBar('dev'), findsOneWidget);
     expect(
       find.descendant(
-        of: appHeader,
+        of: find.byKey(ValueKey('r:${inRoot('app')}')),
         matching: find.textContaining(
           RegExp(r'^app\s+dev$'),
           findRichText: true,
@@ -138,14 +152,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('README.md'), findsWidgets);
     expect(find.text('new.dart'), findsOneWidget);
-
-    // The one clicked is the one shown (the status bar's branch).
-    expect(_statusBar('dev'), findsNothing);
-    await tester.tap(appHeader);
-    await tester.pumpAndSettle();
-    expect(_statusBar('dev'), findsOneWidget);
   });
 }
 

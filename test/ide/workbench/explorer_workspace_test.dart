@@ -186,7 +186,7 @@ void main() {
       ..status = '## main\x00 M index.html\x00';
     final api = FakeGit(inRoot('api'))
       ..status = '## dev\x00 M main.go\x00?? new.go\x00';
-    await pumpWorkbench(
+    final workspace = await pumpWorkbench(
       tester,
       _files,
       roots: ['site', 'api'],
@@ -200,30 +200,36 @@ void main() {
 
     await chord(tester, LogicalKeyboardKey.keyG, control: true, shift: true);
     await tester.pumpAndSettle();
-    // Each under its header in the local changes (#76), with its branch
-    // (the status bar's the one shown) and its changes.
+    // One repository at a time (#1316): the site's under its header, with
+    // its branch (the status bar's) and its changes.
     expect(find.text('Repositories'), findsNothing);
-    for (final (root, branch) in [('site', 'main'), ('api', 'dev')]) {
-      expect(
-        find.descendant(
-          of: find.byKey(ValueKey('r:${inRoot(root)}')),
-          matching: find.textContaining(
-            RegExp('^$root\\s+$branch\$'),
-            findRichText: true,
-          ),
+    expect(find.byKey(ValueKey('r:${inRoot('site')}')), findsOneWidget);
+    expect(find.byKey(ValueKey('r:${inRoot('api')}')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('r:${inRoot('site')}')),
+        matching: find.textContaining(
+          RegExp(r'^site\s+main$'),
+          findRichText: true,
         ),
-        findsOneWidget,
-      );
-    }
+      ),
+      findsOneWidget,
+    );
     expect(_statusBar('main'), findsOneWidget);
     expect(find.text('index.html'), findsWidgets);
-    expect(find.text('new.go'), findsOneWidget);
+    expect(find.text('new.go'), findsNothing);
 
-    // The one clicked is the one shown.
-    await tester.tap(find.byKey(ValueKey('r:${inRoot('api')}')).first);
+    // The one picked in the log's repository menu is the one shown.
+    workspace.selectRepository(
+      workspace.repositories
+          .firstWhere((entry) => entry.$2.service.root == inRoot('api'))
+          .$2,
+    );
     await tester.pumpAndSettle();
     expect(_statusBar('dev'), findsOneWidget);
     expect(_statusBar('main'), findsNothing);
+    expect(find.text('new.go'), findsOneWidget);
+    expect(find.text('index.html'), findsNothing);
   });
 
   test('Search runs in each folder, as one search', () async {

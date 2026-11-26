@@ -538,12 +538,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(thread.archived, isTrue);
 
-    // Delete: confirmed, the agent goes.
+    // Delete: the agent goes at once, an Undo left in its place.
     await openMenu(thread);
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete').last);
-    await tester.pumpAndSettle();
+    await tester.pump(Workspace.deleteDelay);
     expect(workspace.threads, isNot(contains(thread)));
   });
 
