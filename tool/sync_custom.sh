@@ -224,10 +224,11 @@ fi
 
 echo "==> Building"
 # The remote server's build is not published for a custom build. Reuse the
-# one published for this release, so nothing is downloaded and no host is
-# sent a second build: the original app's, when it is the same release, else
-# the one reused last time (a later release of that app says nothing of
-# this one), else our own, carried in the app.
+# one published for this release: the original app's, when it is the same
+# release, else the one reused last time, else the newest published that
+# speaks this build's protocol. The app carries no server of its own — a
+# release is tagged before its artifacts are published, and that must not
+# put 50 MB of server in the bundle; --carry-remote asks for it by hand.
 remote_flags=(--carry-remote)
 remembered="$HOME/Library/Application Support/BaoCode2/remote-version"
 protocol=""
@@ -285,19 +286,18 @@ if [ "$CARRY_REMOTE" = 0 ]; then
       fi
     fi
   fi
-  if [ -n "$published_version" ]; then
-    echo "  Remote server: reusing $published_version"
-    remote_flags=(--remote-release "$published_version")
-  fi
-fi
-if ! dart run tool/build_macos.dart "${remote_flags[@]}"; then
-  if [ "${remote_flags[0]}" != --remote-release ]; then
+  if [ -z "$published_version" ]; then
+    echo "No published remote server speaks protocol ${protocol:-?}." >&2
+    echo "Publish one, or run with --carry-remote to put this build's" \
+      "in the app." >&2
     exit 1
   fi
-  # Published once, gone now (or never for this build): carry our own.
-  echo "  ${remote_flags[1]} is not served; carrying this build's own" >&2
-  remote_flags=(--carry-remote)
-  dart run tool/build_macos.dart "${remote_flags[@]}"
+  echo "  Remote server: reusing $published_version"
+  remote_flags=(--remote-release "$published_version")
+fi
+if ! dart run tool/build_macos.dart "${remote_flags[@]}"; then
+  echo "  The build failed; the remote server was not put in the app." >&2
+  exit 1
 fi
 if [ "${remote_flags[0]}" = --remote-release ]; then
   mkdir -p "$(dirname "$remembered")"
