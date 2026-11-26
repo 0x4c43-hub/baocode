@@ -209,8 +209,10 @@ class ClaudeCodeKernel
 
   /// How many turns of a long session are read at first, from its end, and
   /// then each time the user asks for the earlier ones.
-  static const _firstTurns = 10;
-  static const _earlierTurns = 20;
+  // Our builds open a conversation showing most of it rather than its last
+  // ten turns: the rest is a page each, read as the list nears its top.
+  static const _firstTurns = 25;
+  static const _earlierTurns = 50;
 
   @override
   final KernelDescriptor descriptor;

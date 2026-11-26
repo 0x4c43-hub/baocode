@@ -5065,7 +5065,8 @@ void main() {
           final transcript = Transcript();
           kernel.events.listen(transcript.apply);
           await pumpEventQueue();
-          expect(asked, [(10, null)]);
+          // This build reads 25 turns at first (ClaudeCodeKernel._firstTurns).
+          expect(asked, [(25, null)]);
           expect(prompts(transcript), ['u3', 'u4']);
           expect(kernel.hasEarlierHistory, isTrue);
           expect(transcript.stats!.cache!.conversation.written, 700);
@@ -5073,7 +5074,7 @@ void main() {
 
           await kernel.loadEarlier();
           await pumpEventQueue();
-          expect(asked.last, (20, 'u3'));
+          expect(asked.last, (50, 'u3'));
           expect(prompts(transcript), ['u1', 'u2', 'u3', 'u4']);
           expect(transcript.lastSeq, greaterThan(lastSeq));
           expect(kernel.hasEarlierHistory, isFalse);

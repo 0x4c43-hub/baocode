@@ -1132,7 +1132,10 @@ class _ChatHistoryViewState extends State<ChatHistoryView>
   static const _earlierBarHeight = 40.0;
 
   /// How near the top the list is scrolled before the earlier turns are read.
-  static const _earlierReach = 300.0;
+  // Further than upstream's 300: the page is asked for while there is still
+  // a screenful to read, so the list does not stop at its top with turns
+  // still missing.
+  static const _earlierReach = 900.0;
 
   ChatSession? get _session => switch (_feed) {
     final ChatSession session => session,

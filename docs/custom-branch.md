@@ -35,6 +35,9 @@
 | `lib/ide/terminal/terminal_panel.dart`、`lib/workspace/terminal_deck.dart` | 终端上叠 `ZmodemOverlay` |
 | `lib/ide/terminal/terminal_view.dart` | 点击即取回键盘与输入法连接；Ctrl/⌘ + 滚轮缩放；失效连接的兜底 |
 | `lib/ide/terminal/terminal_widget.dart` | 滚轮带 Ctrl/⌘ 时交给缩放，不滚动 |
+| `packages/bao_remote/lib/src/claude/claude_sessions.dart` | 会话分支的末梢取最后一条**消息**，`system/api_error` 之类的记录不再把分支截断 |
+| `lib/kernel/claude_code/claude_code_kernel.dart` | 打开会话先读 25 轮（上游 10），往上每次 50 轮（上游 20） |
+| `lib/chat/chat_history_view.dart` | 离顶部 900px 就预取更早的分页（上游 300） |
 | `lib/workspace/window_header/header_menu.dart`、`header_menu_bar.dart`、`window_header.dart` | 顶栏的 Git 菜单与快捷键 |
 | `lib/platform/context_menu_io.dart`、`shell_command_io.dart` | 定制 edition 的名字与路径 |
 | `macos/Runner/Info.plist`、`AppInfo.xcconfig`、`project.pbxproj` | bundle id、应用名 |

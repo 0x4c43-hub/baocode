@@ -1352,7 +1352,14 @@ bool _beginsMessage(List<Map<String, Object?>> branch, int index) {
 /// Whether [entry] is read back: a message, or how the session's goal
 /// stood (set, checked, met), which may follow the last message.
 bool _kept(Map<String, Object?> entry) => switch (entry['type']) {
-  'user' || 'assistant' || 'system' => true,
+  'user' || 'assistant' => true,
+  // A compaction boundary joins the turns written before it to those after;
+  // the other system lines are notes about a request (an API error, say)
+  // whose parent is wherever the conversation was when it failed. The
+  // branch is followed from the last kept line, so one of those notes, left
+  // at the end of a session whose requests failed, took the branch back to
+  // that point and hid every turn after it.
+  'system' => entry['subtype'] == 'compact_boundary',
   'attachment' => switch (entry['attachment']) {
     {'type': 'goal_status'} => true,
     _ => false,
