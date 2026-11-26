@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show AppExitType;
 
 import 'package:bao_editor/textmate/textmate_syntax.dart';
 import 'package:bao_remote/client.dart' show SshPrompt;
@@ -85,6 +86,7 @@ import 'ide/lsp/language_features.dart';
 import 'ide/lsp/lsp_protocol.dart';
 import 'ide/lsp/packs/lsp_settings_template.dart';
 import 'ide/terminal/links/terminal_links.dart';
+import 'ide/terminal/terminal_focus.dart';
 import 'ide/terminal/terminal_instance.dart';
 import 'ide/terminal/terminal_panel.dart' show terminalCommandsToSkipShell;
 import 'keybindings/chat_keybindings.dart';
@@ -94,6 +96,7 @@ import 'keybindings/keybinding_service.dart';
 import 'keybindings/window_keybindings.dart';
 import 'l10n/command_titles.dart';
 import 'l10n/l10n.dart';
+import 'l10n/custom_strings.dart';
 import 'notifications/attention_host.dart';
 import 'notifications/attention_service.dart';
 import 'notifications/attention_settings.dart';
@@ -698,6 +701,8 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
         _notifications,
         () => context.l10n,
       );
+      widget.settings?.sourceUpdates?.addListener(_sourceUpdateChanged);
+      _sourceUpdateChanged();
     } else if (ChannelGate.current case final gate? when !gate.ready) {
       // Opened before the main window's was done: here as well.
       WidgetsBinding.instance.addPostFrameCallback((_) => _setUpChannel());
@@ -959,6 +964,7 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
     _attention?.dispose();
     _starPrompt?.dispose();
     _stopUpdateOffers?.call();
+    widget.settings?.sourceUpdates?.removeListener(_sourceUpdateChanged);
     if (_tipsPresenter case final presenter?) {
       _tips
         ?..detach(presenter)
@@ -1921,11 +1927,58 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
   /// window's.
   VoidCallback? _stopUpdateOffers;
 
+  /// Whether this window already offered the source update that is built:
+  /// one toast however often the build says it changed.
+  bool _offeredSourceUpdate = false;
+
+  /// A custom build's update, once built: offered as the original's is,
+  /// its Restart to Update being a quit (the installer runs after it).
+  void _sourceUpdateChanged() {
+    final source = widget.settings?.sourceUpdates;
+    if (source == null || !mounted) return;
+    if (source.status != SourceUpdateStatus.ready) {
+      _offeredSourceUpdate = false;
+      return;
+    }
+    if (_offeredSourceUpdate) return;
+    _offeredSourceUpdate = true;
+    final l10n = context.l10n;
+    final version = (source.sourceVersion ?? source.localVersion).marketing;
+    _notifications.notify(
+      IdeSeverity.info,
+      l10n.updateReady(version),
+      sticky: true,
+      primary: [
+        IdeNotificationAction(l10n.updateRestartNow, _restartSourceUpdate),
+        IdeNotificationAction(l10n.updateLater, () {}),
+      ],
+    );
+  }
+
+  /// Restart to Update, the build having been made: quits, which is what
+  /// the build waits for to put itself in place and open again.
+  void _restartSourceUpdate() {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      unawaited(ChannelAttentionHost.instance.quit());
+      return;
+    }
+    unawaited(ServicesBinding.instance.exitApplication(AppExitType.cancelable));
+  }
+
   /// The sidebar's Update: Restart to Update, as the offer's button.
   void _restartToUpdate() {
     if (widget.settings?.updates case final updates?) {
       unawaited(updates.restart(_notifications, context.l10n));
     }
+  }
+
+  /// The sidebar's Update pill on a custom build: takes the version
+  /// upstream published, and opens the page that shows the build it starts.
+  void _startSourceUpdate() {
+    final source = widget.settings?.sourceUpdates;
+    if (source == null) return;
+    unawaited(source.update());
+    unawaited(openSettings(SettingsSection.updates));
   }
 
   /// Check for Updates...: what it finds told of in this window.
@@ -1945,17 +1998,17 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
   }
 
   Future<void> _checkSourceUpdates(SourceUpdateController source) async {
-    final l10n = context.l10n;
+    final custom = context.custom;
     await source.check();
     if (!mounted) return;
     final message = switch (source.status) {
-      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(
+      SourceUpdateStatus.available => custom.sourceUpdateAvailable(
         source.upstreamLabel,
       ),
-      SourceUpdateStatus.upToDate => l10n.sourceUpdateUpToDate(
-        source.localVersion.marketing,
+      SourceUpdateStatus.upToDate => custom.sourceUpdateUpToDate(
+        (source.sourceVersion ?? source.localVersion).marketing,
       ),
-      SourceUpdateStatus.failed => l10n.sourceUpdateFailed(
+      SourceUpdateStatus.failed => custom.sourceUpdateFailed(
         source.error ?? '',
       ),
       _ => null,
@@ -1998,7 +2051,7 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
     // In a terminal, the keys are the shell's but for the window's that
     // skip it, as VS Code's (`terminal.integrated.commandsToSkipShell`, and
     // ⌘ on macOS); none are the chat's.
-    final inTerminal = _terminals?.focused ?? false;
+    final inTerminal = (_terminals?.focused ?? false) || TerminalFocus.active;
     final focused = inTerminal
         ? const <ChatKeyTarget>[]
         : ChatKeys.focusedTargets();
@@ -2081,7 +2134,8 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       'ideMode' => false,
       'inputFocus' || 'textInputFocus' =>
         focus?.context?.findAncestorStateOfType<EditableTextState>() != null,
-      'terminalFocus' || 'terminalFocusInAny' => _terminals?.focused ?? false,
+      'terminalFocus' || 'terminalFocusInAny' =>
+        (_terminals?.focused ?? false) || TerminalFocus.active,
       ChatContextKeys.sidePanelFocus => _sidePanel.hasFocus,
       ChatContextKeys.singlePane => switch (_workspace.current) {
         // Close Pane's own guard, turned around: where it has nothing to
@@ -3393,6 +3447,8 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       onOpenSettings: () => unawaited(openSettings()),
       updates: widget.settings?.updates?.service,
       onUpdate: _restartToUpdate,
+      sourceUpdates: widget.settings?.sourceUpdates,
+      onSourceUpdate: _startSourceUpdate,
       onSearch: () => unawaited(_openPalette()),
       setup: switch (_tips) {
         final tips? when _main => FeatureTipsEntry(controller: tips),

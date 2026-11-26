@@ -38,6 +38,7 @@ import '../remote/ssh_host.dart' show SshHost, SshHostState, SshHosts;
 import '../theme/app_theme.dart';
 import '../theme/codicons.dart';
 import '../theme/workbench_theme.dart' show themeColors;
+import '../update/source_update_controller.dart';
 import '../update/update_service.dart';
 import '../workspace/chat_drag.dart';
 import '../workspace/editor_launcher.dart';
@@ -211,6 +212,8 @@ class Sidebar extends StatefulWidget {
     this.onNewAgent,
     this.updates,
     this.onUpdate,
+    this.sourceUpdates,
+    this.onSourceUpdate,
     this.setup,
     this.surface,
     this.atRight = false,
@@ -235,6 +238,12 @@ class Sidebar extends StatefulWidget {
   /// runs [onUpdate] (Restart to Update).
   final UpdateService? updates;
   final VoidCallback? onUpdate;
+
+  /// A custom build's own updates, from its sources: the same button while
+  /// upstream has a newer version (or the checkout one this build does not
+  /// have), which runs [onSourceUpdate].
+  final SourceUpdateController? sourceUpdates;
+  final VoidCallback? onSourceUpdate;
 
   /// The agent shown where the sidebar is, selected among the rows: an
   /// agent's window's own; by default the workspace's current one.
@@ -2403,15 +2412,52 @@ class _SidebarState extends State<Sidebar>
   Widget _buildFooter() {
     final updates = widget.updates;
     final onUpdate = widget.onUpdate;
-    if (updates == null || onUpdate == null) return _buildFooterRow(null);
-    return ListenableBuilder(
-      listenable: updates,
-      builder: (context, _) => _buildFooterRow(
-        updates.pending
-            ? _UpdateButton(updates: updates, onTap: onUpdate)
-            : null,
-      ),
-    );
+    if (updates != null && onUpdate != null) {
+      return ListenableBuilder(
+        listenable: updates,
+        builder: (context, _) => _buildFooterRow(
+          updates.pending
+              ? _UpdateButton(
+                  message: _updateMessage(context, updates),
+                  onTap: onUpdate,
+                )
+              : null,
+        ),
+      );
+    }
+    if (widget.sourceUpdates case final source?) {
+      return ListenableBuilder(
+        listenable: source,
+        builder: (context, _) => _buildFooterRow(
+          source.status == SourceUpdateStatus.building ||
+                  !(source.hasNewVersion || source.pending)
+              ? null
+              : _UpdateButton(
+                  message: context.l10n.updateAvailable(
+                    source.hasNewVersion
+                        ? source.upstreamLabel
+                        : (source.sourceVersion ?? source.localVersion)
+                              .marketing,
+                  ),
+                  onTap:
+                      widget.onSourceUpdate ?? () => unawaited(source.update()),
+                ),
+        ),
+      );
+    }
+    return _buildFooterRow(null);
+  }
+
+  /// What the update pill says a click does, as the update it found.
+  static String _updateMessage(BuildContext context, UpdateService updates) {
+    final l10n = context.l10n;
+    final release = updates.release!;
+    final version = release.version.marketing;
+    return updates.isMandatory(release)
+        ? l10n.updateMandatory(version)
+        : updates.status == UpdateStatus.ready
+        ? l10n.updateReady(version)
+        : l10n.updateAvailable(version);
   }
 
   Widget _buildFooterRow(Widget? update) {
@@ -4334,21 +4380,14 @@ class SidebarIconButton extends StatelessWidget {
 /// theme's button colors; its hover says which version and what a click
 /// does.
 class _UpdateButton extends StatelessWidget {
-  const _UpdateButton({required this.updates, required this.onTap});
+  const _UpdateButton({required this.message, required this.onTap});
 
-  final UpdateService updates;
+  final String message;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final release = updates.release!;
-    final version = release.version.marketing;
-    final message = updates.isMandatory(release)
-        ? l10n.updateMandatory(version)
-        : updates.status == UpdateStatus.ready
-        ? l10n.updateReady(version)
-        : l10n.updateAvailable(version);
     return IdeHover(
       message: message,
       excludeFromSemantics: true,

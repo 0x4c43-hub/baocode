@@ -64,12 +64,22 @@ class SourceUpdateController extends ChangeNotifier {
   /// The version that is running: what a new one is newer than.
   AppVersion localVersion = currentAppVersion;
 
-  /// Whether upstream publishes a version newer than the one running. The
+  /// The version this checkout's `pubspec.yaml` names: what a merge takes
+  /// it to, and so what an upstream release is compared with. A build that
+  /// did not install leaves it here still, which keeps the same version
+  /// from being merged and built again.
+  AppVersion? sourceVersion;
+
+  /// What the source's version is newer than, the running build.
+  bool get pending =>
+      sourceVersion != null && sourceVersion!.compareTo(localVersion) > 0;
+
+  /// Whether upstream publishes a version newer than this checkout's. The
   /// commits it has are said too, but a commit that keeps the version is
   /// no update: releases are what this build takes.
   bool get hasNewVersion =>
       upstreamVersion != null &&
-      upstreamVersion!.compareTo(localVersion) > 0;
+      upstreamVersion!.compareTo(sourceVersion ?? localVersion) > 0;
 
   /// The version upstream publishes, as the user is shown it (`2.0.7+40`).
   String get upstreamLabel {
@@ -87,8 +97,8 @@ class SourceUpdateController extends ChangeNotifier {
   /// Why the check or the build failed.
   String? error;
 
-  /// The last lines of [logPath] while a build runs.
-  String? logTail;
+  /// How far the build is, as a bar's 0–1: the last marker it wrote.
+  double? progress;
 
   bool _checking = false;
   Timer? _every;
@@ -124,6 +134,7 @@ class SourceUpdateController extends ChangeNotifier {
       );
       upstreamCommits = ahead ?? 0;
       upstreamVersion = await _versionOfUpstream();
+      sourceVersion = await _versionOfHead();
       lastChecked = DateTime.now();
       error = null;
       _set(
@@ -157,7 +168,7 @@ class SourceUpdateController extends ChangeNotifier {
       // One run's log: the previous one's markers would read as this one's.
       await File(logPath).writeAsString('', flush: true);
       error = null;
-      logTail = null;
+      progress = 0;
       // Detached: the build outlives the app, which it waits for.
       await Process.start(
         script,
@@ -173,10 +184,7 @@ class SourceUpdateController extends ChangeNotifier {
     }
     _set(SourceUpdateStatus.building);
     _watching?.cancel();
-    _watching = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _readLog(),
-    );
+    _watching = Timer.periodic(const Duration(seconds: 2), (_) => _readLog());
     return true;
   }
 
@@ -208,9 +216,19 @@ class SourceUpdateController extends ChangeNotifier {
         .split('\n')
         .where((line) => line.trim().isNotEmpty)
         .toList();
-    logTail = lines.skip(lines.length > 12 ? lines.length - 12 : 0).join('\n');
+    for (final (marker, share) in const [
+      ('==> Building', 0.85),
+      ('==> Testing', 0.5),
+      ('==> Merging', 0.2),
+      ('==> Fetching upstream', 0.08),
+    ]) {
+      if (!text.contains(marker)) continue;
+      if (share > (progress ?? 0)) progress = share;
+      break;
+    }
     if (text.contains('==> Ready')) {
       _stopWatching();
+      progress = 1;
       _set(SourceUpdateStatus.ready);
     } else if (text.contains('==> Failed')) {
       _stopWatching();
@@ -230,7 +248,18 @@ class SourceUpdateController extends ChangeNotifier {
   }
 
   Future<AppVersion?> _versionOfUpstream() async {
-    final pubspec = await _git(['show', 'FETCH_HEAD:pubspec.yaml']);
+    return _versionIn(await _git(['show', 'FETCH_HEAD:pubspec.yaml']));
+  }
+
+  Future<AppVersion?> _versionOfHead() async {
+    try {
+      return _versionIn(await _git(['show', 'HEAD:pubspec.yaml']));
+    } on Object {
+      return null;
+    }
+  }
+
+  AppVersion? _versionIn(String pubspec) {
     final match = RegExp(
       r'^version:\s*(\S+)',
       multiLine: true,
@@ -240,10 +269,11 @@ class SourceUpdateController extends ChangeNotifier {
 
   Future<String> _git(List<String> arguments) async {
     final git = File('/usr/bin/git').existsSync() ? '/usr/bin/git' : 'git';
-    final result = await Process.run(
-      git,
-      ['-C', sourceDir, ...arguments],
-    ).timeout(const Duration(minutes: 2));
+    final result = await Process.run(git, [
+      '-C',
+      sourceDir,
+      ...arguments,
+    ]).timeout(const Duration(minutes: 2));
     if (result.exitCode != 0) {
       final said = '${result.stderr}'.trim();
       throw StateError(said.isEmpty ? 'git ${arguments.first} failed' : said);

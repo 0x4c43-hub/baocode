@@ -6,6 +6,7 @@ import '../../diagnostics/diagnostics_upload.dart';
 import '../../ide/ide_button.dart';
 import '../../ide/ide_menu.dart';
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../theme/codicons.dart';
 import '../../update/source_update_controller.dart';
 import '../../update/update_controller.dart';
@@ -107,6 +108,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
 
   Widget _page(BuildContext context, UpdateMode mode) {
     final l10n = context.l10n;
+    final custom = context.custom;
     final service = _service;
     final busy =
         service?.status == UpdateStatus.checking ||
@@ -119,7 +121,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
       title: l10n.updatesSettingsTitle,
       description: widget.source == null
           ? l10n.updatesSettingsDescription
-          : l10n.sourceUpdatePageDescription,
+          : custom.sourceUpdatePageDescription,
       children: [
         if (widget.source case final source?)
           _sourceCard(context, source)
@@ -142,8 +144,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
                   label: l10n.updateCheckNow,
                   icon: Codicons.refresh,
                   secondary: true,
-                  onPressed:
-                      service == null || busy || mode == UpdateMode.none
+                  onPressed: service == null || busy || mode == UpdateMode.none
                       ? null
                       : () => unawaited(_check()),
                 ),
@@ -229,32 +230,30 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
   /// upstream publishes, and the build that would take it.
   Widget _sourceCard(BuildContext context, SourceUpdateController source) {
     final l10n = context.l10n;
+    final custom = context.custom;
     final busy =
         source.status == SourceUpdateStatus.checking ||
         source.status == SourceUpdateStatus.building;
     final status = switch (source.status) {
       SourceUpdateStatus.idle => null,
       SourceUpdateStatus.checking => l10n.updateChecking,
-      SourceUpdateStatus.upToDate => l10n.sourceUpdateUpToDate(
-        source.localVersion.marketing,
+      SourceUpdateStatus.upToDate => custom.sourceUpdateUpToDate(
+        (source.sourceVersion ?? source.localVersion).marketing,
       ),
-      SourceUpdateStatus.available => l10n.sourceUpdateAvailable(
+      SourceUpdateStatus.available => custom.sourceUpdateAvailable(
         source.upstreamLabel,
       ),
-      SourceUpdateStatus.building => l10n.sourceUpdateBuilding,
-      SourceUpdateStatus.ready => l10n.sourceUpdateReady,
-      SourceUpdateStatus.failed => l10n.sourceUpdateFailed(source.error ?? ''),
+      SourceUpdateStatus.building => custom.sourceUpdateBuilding,
+      SourceUpdateStatus.ready => custom.sourceUpdateReady,
+      SourceUpdateStatus.failed => custom.sourceUpdateFailed(
+        source.error ?? '',
+      ),
     };
-    final detail = switch (source.status) {
-      SourceUpdateStatus.building ||
-      SourceUpdateStatus.ready ||
-      SourceUpdateStatus.failed => source.logTail,
-      _ => null,
-    };
+    final building = source.status == SourceUpdateStatus.building;
     return SettingsCard(
       children: [
         SettingsRow(
-          label: l10n.sourceUpdateTitle,
+          label: custom.sourceUpdateTitle,
           description: [
             l10n.updateCurrentVersion,
             currentAppVersion.marketing,
@@ -274,21 +273,30 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
         if (status != null)
           SettingsRow(
             label: status,
-            description: detail,
             trailing: SettingsButtons(
               children: [
                 IdeButton(
-                  label: l10n.sourceUpdateLog,
+                  label: custom.sourceUpdateLog,
                   secondary: true,
                   onPressed: () => unawaited(source.openLog()),
                 ),
                 if (source.status == SourceUpdateStatus.available ||
-                    source.status == SourceUpdateStatus.failed)
+                    source.status == SourceUpdateStatus.failed ||
+                    source.pending)
                   IdeButton(
-                    label: l10n.sourceUpdateUpdateNow,
+                    label: custom.sourceUpdateUpdateNow,
                     onPressed: busy ? null : () => unawaited(source.update()),
                   ),
               ],
+            ),
+          ),
+        if (building)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: LinearProgressIndicator(
+              value: source.progress,
+              minHeight: 4,
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
       ],

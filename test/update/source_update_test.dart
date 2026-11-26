@@ -46,4 +46,15 @@ void main() {
   test('nothing published yet is not', () {
     expect(source.hasNewVersion, isFalse);
   });
+
+  test('a version the checkout already took is not an update again', () {
+    source.sourceVersion = AppVersion.parse('2.0.7+40');
+    source.upstreamVersion = AppVersion.parse('2.0.7+40');
+    expect(source.hasNewVersion, isFalse);
+  });
+
+  test('a checkout ahead of the running build waits to be built', () {
+    source.sourceVersion = AppVersion.parse('2.0.7+40');
+    expect(source.pending, isTrue);
+  });
 }
