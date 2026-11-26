@@ -25,6 +25,14 @@ void main() {
   test('a version upstream publishes is an update', () {
     source.upstreamVersion = AppVersion.parse('2.0.7+40');
     expect(source.hasNewVersion, isTrue);
+    expect(source.offersUpdate, isTrue);
+  });
+
+  test('a version whose release is not published waits for it', () {
+    source.upstreamVersion = AppVersion.parse('2.0.7+40');
+    source.releasePublished = false;
+    expect(source.hasNewVersion, isTrue);
+    expect(source.offersUpdate, isFalse);
   });
 
   test('the same version is not, whatever the commits', () {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,9 @@ enum SourceUpdateStatus {
   idle,
   checking,
   upToDate,
+
+  /// Upstream bumped the version, but its release has no artifacts yet.
+  waiting,
   available,
   building,
   ready,
@@ -30,9 +34,15 @@ class SourceUpdateController extends ChangeNotifier {
     required this.logPath,
     this.upstreamUrl = 'https://github.com/baocode-dev/baocode.git',
     this.upstreamBranch = 'main',
+    this.releasesUrl = defaultReleasesUrl,
     this.autoUpdate,
     this.checkEvery = const Duration(hours: 6),
   });
+
+  /// Where the releases' artifacts are listed, as the original app's
+  /// updater reads them (`lib/update/update_manifest.dart`).
+  static const defaultReleasesUrl =
+      'https://dl.baocode.dev/releases/latest.json';
 
   /// The checkout this build came from; its scripts do the work.
   final String sourceDir;
@@ -42,6 +52,7 @@ class SourceUpdateController extends ChangeNotifier {
 
   final String upstreamUrl;
   final String upstreamBranch;
+  final String releasesUrl;
 
   /// Whether a new upstream commit is taken without being asked
   /// (`update.mode`, which the page's dropdown writes).
@@ -80,6 +91,14 @@ class SourceUpdateController extends ChangeNotifier {
   bool get hasNewVersion =>
       upstreamVersion != null &&
       upstreamVersion!.compareTo(sourceVersion ?? localVersion) > 0;
+
+  /// Whether [hasNewVersion]'s release has its artifacts published: a
+  /// version is tagged before its builds are up, and the update waits for
+  /// them, as the original app's does.
+  bool releasePublished = true;
+
+  /// Whether there is an update to take now: a new version, published.
+  bool get offersUpdate => hasNewVersion && releasePublished;
 
   /// The version upstream publishes, as the user is shown it (`2.0.7+40`).
   String get upstreamLabel {
@@ -137,12 +156,15 @@ class SourceUpdateController extends ChangeNotifier {
       sourceVersion = await _versionOfHead();
       lastChecked = DateTime.now();
       error = null;
+      releasePublished = !hasNewVersion || await _published(upstreamVersion!);
       _set(
-        hasNewVersion
+        !hasNewVersion
+            ? SourceUpdateStatus.upToDate
+            : releasePublished
             ? SourceUpdateStatus.available
-            : SourceUpdateStatus.upToDate,
+            : SourceUpdateStatus.waiting,
       );
-      if (hasNewVersion && (autoUpdate?.call() ?? false)) {
+      if (offersUpdate && (autoUpdate?.call() ?? false)) {
         await update();
       }
     } on Object catch (problem) {
@@ -249,6 +271,35 @@ class SourceUpdateController extends ChangeNotifier {
 
   Future<AppVersion?> _versionOfUpstream() async {
     return _versionIn(await _git(['show', 'FETCH_HEAD:pubspec.yaml']));
+  }
+
+  /// Whether [version]'s release is published: `latest.json` names it, or
+  /// a newer one.
+  Future<bool> _published(AppVersion version) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final request = await client
+          .getUrl(Uri.parse(releasesUrl))
+          .timeout(const Duration(seconds: 20));
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      if (response.statusCode != HttpStatus.ok) return false;
+      final text = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(const Duration(seconds: 20));
+      final json = jsonDecode(text);
+      final published = json is Map<String, Object?>
+          ? AppVersion.tryParse('${json['version']}')
+          : null;
+      return published != null && published.compareTo(version) >= 0;
+    } on Object {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<AppVersion?> _versionOfHead() async {

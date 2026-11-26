@@ -283,6 +283,9 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
       SourceUpdateStatus.upToDate => custom.sourceUpdateUpToDate(
         (source.sourceVersion ?? source.localVersion).marketing,
       ),
+      SourceUpdateStatus.waiting => custom.sourceUpdateWaiting(
+        source.upstreamLabel,
+      ),
       SourceUpdateStatus.available => custom.sourceUpdateAvailable(
         source.upstreamLabel,
       ),

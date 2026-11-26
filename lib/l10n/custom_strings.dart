@@ -47,6 +47,11 @@ class CustomStrings {
       ? 'BaoCode $version 已构建，立即重启更新。'
       : 'BaoCode $version is built. Restart to update.';
 
+  String sourceUpdateWaiting(String version) => _zh
+      ? '上游 $version 已打版本，产物还没发布；发布后自动更新。'
+      : "Upstream's $version is tagged, but its release is not published "
+            'yet. The update follows it.';
+
   String sourceUpdateFailed(String error) =>
       _zh ? '更新没有完成：$error' : 'The update did not finish: $error';
 

@@ -2058,6 +2058,9 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       SourceUpdateStatus.available => custom.sourceUpdateAvailable(
         source.upstreamLabel,
       ),
+      SourceUpdateStatus.waiting => custom.sourceUpdateWaiting(
+        source.upstreamLabel,
+      ),
       SourceUpdateStatus.upToDate => custom.sourceUpdateUpToDate(
         (source.sourceVersion ?? source.localVersion).marketing,
       ),
