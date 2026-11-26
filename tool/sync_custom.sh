@@ -65,7 +65,7 @@ done
 
 if ! command -v flutter >/dev/null 2>&1; then
   for candidate in \
-    /private/tmp/baocode-build-tools/flutter/bin \
+    /Volumes/MacMini/tools/flutter/bin \
     "$HOME/flutter/bin" \
     /opt/homebrew/bin; do
     if [ -x "$candidate/flutter" ]; then
@@ -74,6 +74,19 @@ if ! command -v flutter >/dev/null 2>&1; then
     fi
   done
 fi
+# The build's other tools, whatever shell ran it: create-dmg (Homebrew),
+# the gems ruby keeps in the user's directory, and cargo's.
+gem_bin=""
+if command -v ruby >/dev/null 2>&1; then
+  gem_bin="$(ruby -e 'print Gem.user_dir' 2>/dev/null)/bin"
+fi
+for extra in /opt/homebrew/bin "$gem_bin" "$HOME/.cargo/bin"; do
+  [ -n "$extra" ] || continue
+  case ":$PATH:" in
+    *":$extra:"*) ;;
+    *) [ -d "$extra" ] && PATH="$PATH:$extra" ;;
+  esac
+done
 
 for command in git flutter dart; do
   if ! command -v "$command" >/dev/null 2>&1; then
