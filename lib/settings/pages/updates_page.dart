@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../../diagnostics/diagnostics_upload.dart';
 import '../../ide/ide_button.dart';
@@ -172,6 +174,7 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
             ),
           ],
         ),
+        if (widget.source case final source?) ..._sourceNotes(context, source),
         if (widget.diagnostics case final diagnostics?)
           SettingsCard(
             children: [
@@ -217,6 +220,46 @@ class _UpdatesSettingsPageState extends State<UpdatesSettingsPage> {
           ),
       ],
     );
+  }
+
+  /// The release notes the checkout keeps for its version
+  /// (`release-notes/<version>.<language>.md`): upstream's, else this
+  /// build's.
+  List<Widget> _sourceNotes(
+    BuildContext context,
+    SourceUpdateController source,
+  ) {
+    final l10n = context.l10n;
+    final directory = p.join(source.sourceDir, 'release-notes');
+    for (final version in [
+      ?source.upstreamVersion,
+      ?source.sourceVersion,
+      source.localVersion,
+    ]) {
+      for (final language in [l10n.localeName, 'en']) {
+        final file = File(
+          p.join(directory, '${version.marketing}.$language.md'),
+        );
+        if (!file.existsSync()) continue;
+        final notes = file.readAsStringSync().trim();
+        if (notes.isEmpty) return const [];
+        return [
+          SettingsGroup(
+            title: l10n.updateReleaseNotesFor(version.marketing),
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+                child: SelectableText(notes, style: SettingsText.description),
+              ),
+            ],
+          ),
+        ];
+      }
+    }
+    return const [];
   }
 
   /// [time] as the app's language writes a date and time.
