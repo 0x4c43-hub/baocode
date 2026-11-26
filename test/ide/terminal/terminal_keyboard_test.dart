@@ -25,8 +25,11 @@ class _DataCoreService extends MockCoreService {
 typedef TestKey = (PhysicalKeyboardKey, LogicalKeyboardKey, String?);
 
 const TestKey keyA = (PhysicalKeyboardKey.keyA, LogicalKeyboardKey.keyA, 'a');
-const TestKey keyC = (PhysicalKeyboardKey.keyC, LogicalKeyboardKey.keyC, 'c');
+const TestKey keyE = (PhysicalKeyboardKey.keyE, LogicalKeyboardKey.keyE, 'e');
 const TestKey keyK = (PhysicalKeyboardKey.keyK, LogicalKeyboardKey.keyK, 'k');
+const TestKey keyU = (PhysicalKeyboardKey.keyU, LogicalKeyboardKey.keyU, 'u');
+const TestKey keyW = (PhysicalKeyboardKey.keyW, LogicalKeyboardKey.keyW, 'w');
+const TestKey keyC = (PhysicalKeyboardKey.keyC, LogicalKeyboardKey.keyC, 'c');
 const TestKey keyV = (PhysicalKeyboardKey.keyV, LogicalKeyboardKey.keyV, 'v');
 const TestKey keyX = (PhysicalKeyboardKey.keyX, LogicalKeyboardKey.keyX, 'x');
 const TestKey enter = (
@@ -291,6 +294,16 @@ void main() {
       expect(k.handleKeyEvent(down(keyC, character: '\x03')).data, '\x03');
       expect(k.handleKeyEvent(down(bracketLeft)).data, '\x1b');
       expect(coreService.data, ['\x03', '\x1b']);
+    });
+
+    test('ctrl+w and the other control characters', () {
+      final k = keyboard();
+      hold(ctrl: true);
+      expect(k.handleKeyEvent(down(keyW)).data, '\x17');
+      expect(k.handleKeyEvent(down(keyA)).data, '\x01');
+      expect(k.handleKeyEvent(down(keyE)).data, '\x05');
+      expect(k.handleKeyEvent(down(keyK)).data, '\x0b');
+      expect(k.handleKeyEvent(down(keyU)).data, '\x15');
     });
 
     test('F-keys, Home and End', () {

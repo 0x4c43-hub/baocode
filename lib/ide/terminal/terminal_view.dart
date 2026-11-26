@@ -52,11 +52,13 @@ import 'shell_integration/decoration_styles.dart';
 import 'shell_integration/shell_integration.dart';
 import 'terminal_clipboard.dart';
 import 'terminal_find.dart';
+import 'terminal_focus.dart';
 import 'terminal_instance.dart';
 import 'terminal_keyboard.dart';
 import 'terminal_render_theme.dart';
 import 'terminal_renderer.dart';
 import 'terminal_widget.dart';
+import 'terminal_zoom.dart';
 
 import 'package:bao_xterm/common/data/escape_sequences.dart';
 import 'package:bao_xterm/common/lifecycle.dart';
@@ -287,6 +289,7 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
     if (!_owning) return;
     _owning = false;
     instance.focusNode.removeListener(_focusChanged);
+    TerminalFocus.leave(instance);
     // What is the terminal's view's, unless another view of it has it now.
     if (instance.selection.currentLinkRange == _linkRange) {
       instance.selection.currentLinkRange = null;
@@ -335,6 +338,11 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     _key = event;
     try {
+      // The connection is the platform's: another field may have taken it
+      // (or closed it) without the callback reaching us, and then plain
+      // typing must go the keyboard's way rather than to an input method
+      // that is no longer there.
+      _instance.keyboard.textInputAttached = _input?.attached ?? false;
       final result = _instance.keyboard.handleKeyEvent(event);
       if (result.scrollLines != 0) {
         _instance.terminal.scrollLines(result.scrollLines);
@@ -376,9 +384,11 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
       );
     }
     if (focused) {
+      TerminalFocus.enter(instance);
       instance.showCursor();
       _openInput();
     } else {
+      TerminalFocus.leave(instance);
       _closeInput(instance);
     }
   }
@@ -416,6 +426,49 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
       ..textInputAttached = false
       ..isComposing = false;
     _render.composition = null;
+  }
+
+  /// A press on the grid promises the keyboard: takes the focus back if it
+  /// wandered off, and a new input method connection (the field that had
+  /// one closes it a moment after handing the focus over, which may take
+  /// ours with it).
+  void _takeKeyboard() {
+    final node = _instance.focusNode;
+    if (!node.hasFocus) node.requestFocus();
+    _reopenInput();
+    _retryKeyboard(2);
+  }
+
+  void _reopenInput() {
+    if (_input != null) _closeInput(_instance);
+    if (_instance.focusNode.hasFocus) _openInput();
+  }
+
+  /// Some handovers land a frame after the press (the field that had the
+  /// focus closes its connection then): takes the keyboard again, a few
+  /// frames running at most.
+  void _retryKeyboard(int tries) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.mirror) return;
+      final node = _instance.focusNode;
+      if (!node.hasFocus) {
+        node.requestFocus();
+      } else if (_input?.attached == true) {
+        return;
+      } else {
+        _openInput();
+      }
+      if (tries > 0) _retryKeyboard(tries - 1);
+    });
+  }
+
+  /// The wheel with Ctrl (⌘) held: the terminal's text one point larger
+  /// scrolling up, smaller down, as VS Code's does.
+  void _zoom(double delta) {
+    final current = _instance.xterm.options.fontSize;
+    final size = TerminalZoom.next(current, delta);
+    if (size == current) return;
+    TerminalZoom.set(size);
   }
 
   void _updateInputGeometry() {
@@ -497,11 +550,22 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
 
   @override
   void connectionClosed() {
+    if (_input == null) return;
     _input = null;
     _instance.keyboard
       ..textInputAttached = false
       ..isComposing = false;
     _render.composition = null;
+    // A field that lost the focus to the terminal (the chat's composer)
+    // closes its connection a moment later, and the system clears whichever
+    // one is current — this one. The keyboard is still here: take it again,
+    // or typing goes nowhere until the terminal is pressed once more.
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _instance.focusNode.hasFocus && _input?.attached != true) {
+        _openInput();
+      }
+    });
   }
 
   // --- Find -------------------------------------------------------------
@@ -749,6 +813,10 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
     if (widget.mirror) {
       _focusOnOwning = true;
       widget.onActivate?.call();
+    } else {
+      // A press promises the keyboard: the chat's composer may have taken
+      // it a moment before, and the input method's connection with it.
+      _takeKeyboard();
     }
     _linkPressed = event.buttons == kPrimaryButton && _linkModifier
         ? _link
@@ -969,6 +1037,7 @@ class _TerminalViewState extends State<TerminalView> with TextInputClient {
         onPointerCancel: instance.mouse.handlePointerCancel,
         onWheel: instance.mouse.handlePointerScroll,
         onPanZoomUpdate: instance.mouse.handlePointerPanZoomUpdate,
+        onZoom: mirror ? null : _zoom,
         capturesWheel: _capturesWheel,
         mouseCursor: _cursor,
         background: widget.background,

@@ -51,6 +51,7 @@ import 'ide/lsp/packs/language_packs.dart';
 import 'ide/terminal/pty.dart';
 import 'ide/terminal/terminal_colors.dart';
 import 'ide/terminal/terminal_instance.dart';
+import 'ide/terminal/terminal_zoom.dart';
 import 'icons/emoji_sheet.dart';
 import 'icons/icon_library.dart';
 import 'icons/icon_storage.dart';
@@ -695,6 +696,8 @@ void followSettingsFiles(SettingsFiles files) {
   EditorWordWrap.follow(files.settings);
   // Whether the code editors show their minimap.
   EditorMinimap.follow(files.settings);
+  // Where the terminals' zoom keeps its size.
+  TerminalZoom.follow(files.settings);
 }
 
 /// The app's updates (lib/update/): looked for as settings.json's

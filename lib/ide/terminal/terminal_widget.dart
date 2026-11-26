@@ -206,6 +206,7 @@ class TerminalWidget extends StatefulWidget {
     this.onPointerCancel,
     this.onWheel,
     this.onPanZoomUpdate,
+    this.onZoom,
     this.capturesWheel,
     this.mouseCursor = SystemMouseCursors.text,
     this.background,
@@ -246,6 +247,11 @@ class TerminalWidget extends StatefulWidget {
 
   /// A trackpad pan the terminal took, as [onWheel].
   final TerminalScrollCallback<PointerPanZoomUpdateEvent>? onPanZoomUpdate;
+
+  /// The wheel turned with Ctrl (⌘) held: the terminal's text zooms, by
+  /// [delta] (`PointerScrollEvent.scrollDelta.dy`: negative up) instead of
+  /// scrolling.
+  final void Function(double delta)? onZoom;
 
   /// Whether the terminal takes wheel events even where its viewport
   /// cannot scroll: mouse reporting with the wheel, or the alternate screen
@@ -656,6 +662,14 @@ class _TerminalWidgetState extends State<TerminalWidget>
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
+    final onZoom = widget.onZoom;
+    if (onZoom != null) {
+      final keyboard = HardwareKeyboard.instance;
+      if (keyboard.isControlPressed || keyboard.isMetaPressed) {
+        onZoom(event.scrollDelta.dy);
+        return;
+      }
+    }
     final delta = event.scrollDelta.dy;
     final last = _lastWheel;
     if (last == null || event.timeStamp - last >= WheelLatch.gap) {
