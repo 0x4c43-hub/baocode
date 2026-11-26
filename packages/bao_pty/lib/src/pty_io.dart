@@ -57,9 +57,15 @@ final class _PosixPty extends Pty {
   /// keep the terminal open for good.
   static const _flushTimeout = Duration(milliseconds: 200);
 
-  /// How soon a write the terminal did not take is tried again, as node-pty
-  /// does.
+  /// How soon a write the terminal did not take is tried again once it keeps
+  /// refusing: the terminal is full and nothing is reading it. A short wait
+  /// first, because a program that is reading (a file transfer) drains the
+  /// terminal quickly and a timer's delay would cap the throughput.
   static const _writeRetry = Duration(milliseconds: 5);
+
+  /// How many turns a write may be retried without the terminal taking
+  /// anything before backing off to [_writeRetry].
+  static const _writeStalls = 32;
 
   static const _chunk = 64 * 1024;
 
@@ -178,6 +184,7 @@ final class _PosixPty extends Pty {
   final _pending = Queue<Uint8List>();
   int _pendingOffset = 0;
   Timer? _retry;
+  int _stalls = 0;
 
   int? _code;
   Timer? _flush;
@@ -264,9 +271,14 @@ final class _PosixPty extends Pty {
         return;
       }
       if (written == 0) {
-        _retry = Timer(_writeRetry, _drain);
+        _stalls++;
+        _retry = Timer(
+          _stalls > _writeStalls ? _writeRetry : Duration.zero,
+          _drain,
+        );
         return;
       }
+      _stalls = 0;
       _pendingOffset += written;
       if (_pendingOffset == chunk.length) {
         _pending.removeFirst();
