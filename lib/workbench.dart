@@ -49,6 +49,7 @@ import 'extensions/theme_extensions.dart';
 import 'ide/editor_minimap_setting.dart';
 import 'ide/editor_word_wrap.dart';
 import 'ide/git/git_model.dart' show ideWorktreeOf;
+import 'ide/git/git_credentials.dart';
 import 'ide/git/git_repository.dart';
 import 'ide/git/ide_git_clone_dialog.dart';
 import 'ide/git/ide_git_log_view.dart'
@@ -656,6 +657,9 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
     WindowControls.handleWindowEvents(_viewId);
     // What signing in to a host asks, asked here.
     SshHosts.instance.passwords.ask = _askSshPassword;
+    // What an HTTPS Git remote asks for, asked here (the IDE's own window
+    // comes and goes; this one is there for the chat too).
+    IdeGitCredentials.instance.prompter = _askGitCredentials;
     // The servers saved with the host picker's form.
     SshHosts.instance.savedServers = () => _workspace.sshServers;
     unawaited(_loadSshConfigHosts());
@@ -928,8 +932,38 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       ? showSshPasswordDialog(context, prompt, keepable: keepable)
       : null;
 
+  /// Where Git asks for an HTTPS remote's credentials (VS Code's askpass).
+  Future<IdeGitCredential?> _askGitCredentials(String host) async {
+    if (!mounted) return null;
+    final custom = context.custom;
+    final result = await showIdeInputDialog(
+      context,
+      message: custom.gitCredentialsTitle(host),
+      detail: custom.gitCredentialsDetail,
+      inputs: [
+        IdeDialogInput(placeholder: custom.gitCredentialsUsername),
+        IdeDialogInput(
+          placeholder: custom.gitCredentialsPassword,
+          obscure: true,
+        ),
+      ],
+      buttons: [custom.gitCredentialsSignIn],
+      type: IdeDialogType.question,
+    );
+    if (result == null || result.button != 0 || result.values.length < 2) {
+      return null;
+    }
+    final username = result.values[0].trim();
+    final password = result.values[1];
+    if (username.isEmpty || password.isEmpty) return null;
+    return IdeGitCredential(username, password);
+  }
+
   @override
   void dispose() {
+    if (IdeGitCredentials.instance.prompter == _askGitCredentials) {
+      IdeGitCredentials.instance.prompter = null;
+    }
     _sessionLinks.dispose();
     ChannelGate.current?.removeListener(_channelGateChanged);
     for (final edits in _ideAgentEdits.values) {

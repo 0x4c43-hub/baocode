@@ -64,6 +64,12 @@ class CustomStrings {
 
   String get gitMenuUpdateProject => _zh ? '更新项目' : 'Update Project';
 
+  String get gitMenuUpdateProjectDetail => _zh
+      ? '把当前仓库的当前分支更新到它的上游：合并上游的新提交，或者把本分支自己的提交变基到上面。期间本地改动会先暂存（stash）。'
+      : "Bring the repository's current branch up to its upstream: merge the "
+            "upstream's new commits, or rebase this branch's own commits onto "
+            'it. Local changes are stashed meanwhile.';
+
   String get gitMenuPullPush => _zh ? '拉取，推送' : 'Pull, Push';
 
   String get gitMenuPullRebase => _zh ? '拉取（变基）' : 'Pull (Rebase)';
@@ -96,6 +102,21 @@ class CustomStrings {
 
   String get gitMenuNoRemote =>
       _zh ? '没有可用的远程仓库。' : 'There is no remote to work with.';
+
+  String gitCredentialsTitle(String host) =>
+      _zh ? '登录 $host' : 'Sign in to $host';
+
+  String get gitCredentialsDetail => _zh
+      ? '这个远程仓库需要通过 HTTPS 登录。用户名和密码（或访问令牌）只在本次运行中记住。'
+      : 'This remote needs an HTTPS sign-in. The user name and password (or '
+            'access token) are kept for this run only.';
+
+  String get gitCredentialsUsername => _zh ? '用户名' : 'User name';
+
+  String get gitCredentialsPassword =>
+      _zh ? '密码或访问令牌' : 'Password or access token';
+
+  String get gitCredentialsSignIn => _zh ? '登录' : 'Sign In';
 
   String get gitMenuPickRemote => _zh ? '选择远程仓库' : 'Pick a remote';
 

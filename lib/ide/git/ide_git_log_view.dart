@@ -1830,27 +1830,22 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
         icon: Codicons.ellipsis,
         tooltip: l10n.commonMoreActions,
         entries: () => ideMenuGroups([
-          if (compact)
-            [
-              IdeMenuAction(
-                l10n.scmFetch,
-                onSelected: () => unawaited(_run(git.fetch)),
+          [
+            IdeMenuAction(
+              l10n.scmFetch,
+              onSelected: () => unawaited(_run(git.fetch)),
+            ),
+            IdeMenuAction(
+              pullLabel,
+              onSelected: () => unawaited(_run(git.pull)),
+            ),
+            IdeMenuAction(
+              '$pushLabel…',
+              onSelected: () => unawaited(
+                IdeGitBranchActions(context, git, _LogBranchHost(this)).push(),
               ),
-              IdeMenuAction(
-                pullLabel,
-                onSelected: () => unawaited(_run(git.pull)),
-              ),
-              IdeMenuAction(
-                '$pushLabel…',
-                onSelected: () => unawaited(
-                  IdeGitBranchActions(
-                    context,
-                    git,
-                    _LogBranchHost(this),
-                  ).push(),
-                ),
-              ),
-            ],
+            ),
+          ],
           [
             IdeMenuAction(
               l10n.scmGoToCurrent,

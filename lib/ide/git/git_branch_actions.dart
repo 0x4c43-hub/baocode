@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as p;
 
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../theme/codicons.dart';
 import '../file_service.dart';
 import '../ide_dialog.dart';
@@ -40,7 +41,7 @@ abstract interface class IdeGitBranchHost {
   /// Where Update Project's way is kept.
   IdeScmSession get session;
 
-  /// The repositories Update Project updates: the window's all.
+  /// The window's repositories, for the actions that span them (Push…).
   List<IdeGitRepository> get repositories;
 
   /// Runs an operation, its failure told.
@@ -311,17 +312,18 @@ class IdeGitBranchActions {
     notifications: host.notifications,
   );
 
-  /// Update Project: each repository's branch brought up to its upstream,
-  /// by merge or by rebase, as asked (until told not to ask again).
+  /// Update Project: the repository's branch brought up to its upstream, by
+  /// merge or by rebase, as asked (until told not to ask again).
   Future<void> updateProject() async {
     final l10n = context.l10n;
+    final custom = context.custom;
     final session = host.session;
     var rebase = session.rebaseWhenSync;
     if (session.updateProjectAsks) {
       final result = await showIdeInputDialog(
         context,
         message: l10n.gitUpdateProject,
-        detail: l10n.gitUpdateProjectDetail,
+        detail: custom.gitMenuUpdateProjectDetail,
         buttons: [l10n.gitUpdateMerge, l10n.gitUpdateRebase],
         checkbox: l10n.gitDontAskAgain,
         type: IdeDialogType.question,
@@ -331,11 +333,7 @@ class IdeGitBranchActions {
       session.rebaseWhenSync = rebase;
       if (result.checked) session.updateProjectAsks = false;
     }
-    final repositories = host.repositories.isEmpty ? [git] : host.repositories;
-    for (final repository in repositories) {
-      if (repository.state?.head.upstream == null) continue;
-      await host.run(() => repository.updateProject(rebase: rebase));
-    }
+    await host.run(() => git.updateProject(rebase: rebase));
   }
 
   /// Push…: the Push dialog, for the window's repositories.

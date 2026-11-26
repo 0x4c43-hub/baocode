@@ -12,8 +12,8 @@
 // for the actions, and for-each-ref, checkout and checkout -b for Checkout
 // to… (`getRefs`, `findTrackingBranches`, `checkout`, `branch`).
 //
-// Deviations: no stash, and no credential prompts
-// (`GIT_TERMINAL_PROMPT=0`: a remote that asks for a password fails).
+// Deviations: no stash; and no credential prompts in the terminal
+// (`GIT_TERMINAL_PROMPT=0`), as the window asks instead (git_credentials.dart).
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -22,6 +22,7 @@ import 'package:bao_remote/git.dart';
 import 'package:path/path.dart' as p;
 
 import 'git_model.dart';
+import 'git_credentials.dart';
 import 'git_service_stub.dart'
     if (dart.library.io) 'git_service_io.dart'
     as platform;
@@ -160,13 +161,31 @@ class IdeGitService {
     int? limit,
     String? stdin,
     Map<String, String>? environment,
-  }) => _run(
-    arguments,
-    workingDirectory: cwd ?? _repositoryRoot ?? root,
-    limit: limit,
-    stdin: stdin,
-    environment: environment,
-  );
+  }) async {
+    final workingDirectory = cwd ?? _repositoryRoot ?? root;
+    final output = await _run(
+      arguments,
+      workingDirectory: workingDirectory,
+      limit: limit,
+      stdin: stdin,
+      environment: environment,
+    );
+    // A prompt cannot be answered where the command's input is in use.
+    final origin = stdin == null ? IdeGitCredentials.hostIn(output) : null;
+    if (origin == null) return output;
+    final credential = await IdeGitCredentials.instance.forHost(origin);
+    if (credential == null) return output;
+    final retried = await _run(
+      [...IdeGitCredentials.arguments(origin, credential), ...arguments],
+      workingDirectory: workingDirectory,
+      limit: limit,
+      environment: environment,
+    );
+    if (retried.exitCode != 0 && IdeGitCredentials.hostIn(retried) != null) {
+      IdeGitCredentials.instance.forget(origin);
+    }
+    return retried;
+  }
 
   /// JetBrains' Get from Version Control: [url] cloned into [directory],
   /// which Git makes; on this machine, or through [runner]. No prompt for
