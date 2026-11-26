@@ -1999,7 +1999,7 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
     final version = (source.sourceVersion ?? source.localVersion).marketing;
     _notifications.notify(
       IdeSeverity.info,
-      l10n.updateReady(version),
+      context.custom.sourceUpdateBuilt(version),
       sticky: true,
       primary: [
         IdeNotificationAction(l10n.updateRestartNow, _restartSourceUpdate),
@@ -3489,6 +3489,7 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
       onUpdate: _restartToUpdate,
       sourceUpdates: widget.settings?.sourceUpdates,
       onSourceUpdate: _startSourceUpdate,
+      onSourceUpdateRestart: _restartSourceUpdate,
       onSearch: () => unawaited(_openPalette()),
       setup: switch (_tips) {
         final tips? when _main => FeatureTipsEntry(controller: tips),

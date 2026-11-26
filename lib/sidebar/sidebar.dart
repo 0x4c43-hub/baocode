@@ -30,6 +30,7 @@ import '../kernel/agent_kernel.dart' show KernelChoiceKind;
 import '../keybindings/chat_keybindings.dart';
 import '../keybindings/default_keybindings.dart' show openSettingsCommandId;
 import '../keybindings/keybinding_service.dart';
+import '../l10n/custom_strings.dart';
 import '../l10n/l10n.dart';
 import '../models/model_provider.dart' show parseModelRef;
 import '../models/model_providers.dart';
@@ -215,6 +216,7 @@ class Sidebar extends StatefulWidget {
     this.onUpdate,
     this.sourceUpdates,
     this.onSourceUpdate,
+    this.onSourceUpdateRestart,
     this.setup,
     this.surface,
     this.atRight = false,
@@ -242,9 +244,11 @@ class Sidebar extends StatefulWidget {
 
   /// A custom build's own updates, from its sources: the same button while
   /// upstream has a newer version (or the checkout one this build does not
-  /// have), which runs [onSourceUpdate].
+  /// have), which runs [onSourceUpdate]; once a build is ready, it runs
+  /// [onSourceUpdateRestart] to install it.
   final SourceUpdateController? sourceUpdates;
   final VoidCallback? onSourceUpdate;
+  final VoidCallback? onSourceUpdateRestart;
 
   /// The agent shown where the sidebar is, selected among the rows: an
   /// agent's window's own; by default the workspace's current one.
@@ -2439,21 +2443,37 @@ class _SidebarState extends State<Sidebar>
     if (widget.sourceUpdates case final source?) {
       return ListenableBuilder(
         listenable: source,
-        builder: (context, _) => _buildFooterRow(
-          source.status == SourceUpdateStatus.building ||
-                  !(source.hasNewVersion || source.pending)
-              ? null
-              : _UpdateButton(
-                  message: context.l10n.updateAvailable(
-                    source.hasNewVersion
-                        ? source.upstreamLabel
-                        : (source.sourceVersion ?? source.localVersion)
-                              .marketing,
-                  ),
-                  onTap:
-                      widget.onSourceUpdate ?? () => unawaited(source.update()),
-                ),
-        ),
+        builder: (context, _) {
+          if (source.status == SourceUpdateStatus.building) {
+            return _buildFooterRow(null);
+          }
+          // Built and waiting for the app to quit: the button restarts it.
+          if (source.status == SourceUpdateStatus.ready) {
+            final version = (source.sourceVersion ?? source.localVersion);
+            return _buildFooterRow(
+              _UpdateButton(
+                message: context.custom.sourceUpdateBuilt(version.marketing),
+                onTap:
+                    widget.onSourceUpdateRestart ??
+                    widget.onSourceUpdate ??
+                    () => unawaited(source.update()),
+              ),
+            );
+          }
+          if (!(source.hasNewVersion || source.pending)) {
+            return _buildFooterRow(null);
+          }
+          return _buildFooterRow(
+            _UpdateButton(
+              message: context.l10n.updateAvailable(
+                source.hasNewVersion
+                    ? source.upstreamLabel
+                    : (source.sourceVersion ?? source.localVersion).marketing,
+              ),
+              onTap: widget.onSourceUpdate ?? () => unawaited(source.update()),
+            ),
+          );
+        },
       );
     }
     return _buildFooterRow(null);

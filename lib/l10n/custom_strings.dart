@@ -43,6 +43,10 @@ class CustomStrings {
       : 'The new version is built. It installs when BaoCode 2 quits, and '
             'opens again.';
 
+  String sourceUpdateBuilt(String version) => _zh
+      ? 'BaoCode $version 已构建，立即重启更新。'
+      : 'BaoCode $version is built. Restart to update.';
+
   String sourceUpdateFailed(String error) =>
       _zh ? '更新没有完成：$error' : 'The update did not finish: $error';
 
