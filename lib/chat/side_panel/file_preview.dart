@@ -5,10 +5,12 @@ import 'dart:typed_data';
 import 'package:bao_editor/monaco/flutter/editor_decorations.dart';
 import 'package:bao_editor/monaco/flutter/editor_document_model.dart';
 import 'package:bao_editor/monaco/flutter/language_overrides.dart';
+import 'package:flutter/gestures.dart' show PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, LogicalKeyboardKey;
 import 'package:path/path.dart' as p;
 import 'package:super_sliver_list/super_sliver_list.dart';
 
@@ -16,6 +18,16 @@ import '../../base/shown_when_ready.dart';
 import '../../base/smooth_scroll.dart';
 import '../../ide/editor_word_wrap.dart';
 import '../../ide/file_service.dart';
+import '../../ide/git/git_annotations.dart';
+import '../../ide/git/git_blame.dart'
+    show
+        IdeGitBlameController,
+        formatGitBlame,
+        ideGitBlameMargin,
+        ideGitBlameTemplate;
+import '../../ide/git/git_blame_card.dart';
+import '../../ide/git/git_model.dart' show IdeGitBlameInformation;
+import '../../ide/git/git_repository.dart';
 import '../../ide/ide_agent_edits.dart';
 import '../../ide/ide_code_diff.dart';
 import '../../ide/ide_code_editor.dart';
@@ -50,6 +62,14 @@ import 'line_diff.dart';
 import '../../base/safe_selection_indexes.dart';
 import '../../ide/host_paths.dart';
 
+/// Shows [commit]'s details in the side panel, as GitLens's card opens
+/// one: who made it and when, its parents and files.
+typedef ShowCommitDetails = void Function(
+  IdeGitRepository git,
+  String path,
+  String commit,
+);
+
 /// A file in the side panel: its text in the IDE's editor, to edit, search
 /// and save (Cmd+S, Ctrl+S), the lines asked for marked and scrolled to,
 /// the agent's change pending in it ([agentEdit]) shown as the IDE shows it,
@@ -80,6 +100,8 @@ class FilePreview extends StatefulWidget {
     this.onDiffScrolled,
     this.viewState = IdeViewState.empty,
     this.onPreviewLeft,
+    this.git,
+    this.onShowCommit,
   });
 
   final FileOpenRequest request;
@@ -121,6 +143,13 @@ class FilePreview extends StatefulWidget {
 
   /// Reads it, on the project's host.
   final IdeFileService files;
+
+  /// The Git repository the file is in, whose blame shows beside the line
+  /// numbers; none outside a repository.
+  final IdeGitRepository? git;
+
+  /// Shows a commit's details: a line's blame, its hash pressed.
+  final ShowCommitDetails? onShowCommit;
 
   /// Where the agent works: the bar names the file from there.
   final String? root;
@@ -210,6 +239,31 @@ class _FilePreviewState extends State<FilePreview> {
   /// The file's text in the editor, once read; none for changes.
   SidePanelFileEdit? _edit;
 
+  /// The file's blame, in the repository it is in: shown beside the line
+  /// numbers of its editor, none for changes or outside a repository.
+  IdeGitAnnotations? _blame;
+
+  /// The blame of the caret's line in its editor, after the line's end (as
+  /// VS Code's Git extension shows it).
+  late final IdeGitBlameController _lineBlame = IdeGitBlameController()
+    ..addListener(_blameChanged);
+
+  /// Whether the caret moved since the file was shown: only then does a
+  /// line's blame show (not a caret left at the start).
+  bool _navigated = false;
+
+  /// The line whose blame the pointer has been on a while, and where
+  /// (global): its commit's details hover by it.
+  (int, Offset)? _blameHover;
+  Timer? _blameHoverTimer;
+
+  /// Whether the card was pinned by a press, rather than shown by the
+  /// pointer resting on the blame: it stays as the pointer leaves.
+  bool _blamePinned = false;
+
+  /// The card, to keep it while the pointer is on it.
+  final GlobalKey _blameCardKey = GlobalKey();
+
   /// The text the lines asked for were marked in: unmarked once edited.
   Object? _markedIn;
   final _editor = GlobalKey<IdeCodeEditorState>();
@@ -240,6 +294,12 @@ class _FilePreviewState extends State<FilePreview> {
   bool get _editable =>
       !_request.diff && _request.modified == null && !_request.readOnly;
 
+  /// The lines shown, where the file's own text shows rather than edited.
+  List<String>? get _shownLines => switch (_loaded) {
+    _Text(:final lines) => lines,
+    _ => null,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -262,6 +322,8 @@ class _FilePreviewState extends State<FilePreview> {
 
   void _attach(SidePanelFileEdit edit) {
     _edit = edit..addListener(_editChanged);
+    edit.controller.addListener(_caretChanged);
+    _syncLineBlame();
   }
 
   /// Lets go of the edit; disposes it unless its tab keeps it.
@@ -271,11 +333,38 @@ class _FilePreviewState extends State<FilePreview> {
     _edit = null;
     if (edit == null) return;
     edit.removeListener(_editChanged);
+    edit.controller.removeListener(_caretChanged);
+    _lineBlame.clear();
     if (widget.onEdit == null && !identical(edit, widget.edit)) edit.dispose();
   }
 
   void _editChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// The caret moved (or the text changed): the line's blame shows, after
+  /// the line.
+  void _caretChanged() {
+    _navigated = true;
+    _syncLineBlame();
+  }
+
+  /// Reads the blame of the caret's line again: none outside a repository,
+  /// or where the file is not edited here.
+  void _syncLineBlame() {
+    final git = widget.git;
+    final edit = _edit;
+    if (git == null || edit == null || !_editable) {
+      _lineBlame.clear();
+      return;
+    }
+    _lineBlame.update(
+      repository: git,
+      path: _request.path,
+      model: edit.controller.document,
+      selections: edit.controller.selections,
+      navigated: _navigated,
+    );
   }
 
   @override
@@ -287,6 +376,8 @@ class _FilePreviewState extends State<FilePreview> {
         old.original != _request.original ||
         old.modified != _request.modified ||
         oldWidget.files != widget.files) {
+      _blame?.dispose();
+      _blame = null;
       _dropMarkdown();
       _detach();
       if (widget.edit case final edit? when _editable) _attach(edit);
@@ -296,12 +387,23 @@ class _FilePreviewState extends State<FilePreview> {
       // shows kept until then.
       unawaited(_read(++_load));
     }
+    // The repository is found after the panel opens (its folders scanned):
+    // the blame shows as soon as it is known.
+    if (!identical(oldWidget.git, widget.git)) {
+      _blame?.dispose();
+      _blame = null;
+      _syncBlame(_shownLines);
+      _syncLineBlame();
+    }
   }
 
   @override
   void dispose() {
     EditorLanguageOverrides.instance.removeListener(_languageModesChanged);
     EditorWordWrap.on.removeListener(_editChanged);
+    _blameHoverTimer?.cancel();
+    _blame?.dispose();
+    _lineBlame.dispose();
     _dropMarkdown();
     _detach();
     _hunks.dispose();
@@ -365,6 +467,7 @@ class _FilePreviewState extends State<FilePreview> {
 
   void _start({bool force = false}) {
     _force = force;
+    _navigated = false;
     final load = ++_load;
     _loaded = null;
     _colors = const [];
@@ -429,6 +532,7 @@ class _FilePreviewState extends State<FilePreview> {
         _markdown = _edit?.controller.document ?? EditorDocumentModel(text);
       }
     });
+    _syncBlame(loaded is _Text ? loaded.lines : null);
     if (_edit != null) return _reveal();
     unawaited(_colorize(load, loaded, original, text));
   }
@@ -451,6 +555,265 @@ class _FilePreviewState extends State<FilePreview> {
     edit.controller.viewState = view.editor;
     _attach(edit);
     widget.onEdit?.call(edit);
+  }
+
+  /// The file's blame, beside its lines: its own text, saved, in a Git
+  /// repository; [lines] where it shows read-only, none for its changes
+  /// shown in their place.
+  void _syncBlame([List<String>? lines]) {
+    final git = widget.git;
+    if (git == null || _request.diff || _request.modified != null) return;
+    final document =
+        _edit?.controller.document ??
+        switch (lines) {
+          final lines? when !_editable => EditorDocumentModel(lines.join('\n')),
+          _ => null,
+        };
+    if (document == null || _blame != null) return;
+    _blame = IdeGitAnnotations(
+      repository: git,
+      path: _request.path,
+      document: document,
+    )..addListener(_blameChanged);
+  }
+
+  void _blameChanged() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+      return;
+    }
+    setState(() {});
+  }
+
+  void _hideBlameHover() {
+    _blameHoverTimer?.cancel();
+    _blamePinned = false;
+    if (_blameHover != null) setState(() => _blameHover = null);
+  }
+
+  /// Shows the commit of the blame the pointer is on, once it rests there.
+  void _blameHoverAt(int? line, Offset global) {
+    // Pinned by a press: it stays where it is.
+    if (_blamePinned) return;
+    // Already shown for the line: kept where it was put.
+    if (_blameHover?.$1 == line) return;
+    _blameHoverTimer?.cancel();
+    if (line == null) return _hideBlameHover();
+    _blameHoverTimer = Timer(ideHoverDelay, () {
+      if (mounted) setState(() => _blameHover = (line, global));
+    });
+  }
+
+  /// Puts the card away once the pointer had a moment to reach it.
+  void _hideBlameHoverSoon() {
+    _blameHoverTimer?.cancel();
+    if (_blameHover == null || _blamePinned) return;
+    _blameHoverTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted || _blamePinned) return;
+      setState(() => _blameHover = null);
+    });
+  }
+
+  /// Whether [global] is on the card.
+  bool _onBlameCard(Offset global) {
+    final box = _blameCardKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return false;
+    return (box.localToGlobal(Offset.zero) & box.size).contains(global);
+  }
+
+  /// Whether [global] is on a line with a caret's blame.
+  bool _onBlameLine(Offset global) {
+    final view = _editor.currentState?.view;
+    final box = _editor.currentState?.surfaceBox;
+    if (view == null || box == null) return false;
+    final local = box.globalToLocal(global);
+    for (final line in _lineBlame.lines) {
+      if (view.lineRectAt(line.lineNumber)?.contains(local) ?? false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Shows the commit of the blame at [line] at once, where it was pressed;
+  /// pressed again, it goes.
+  void _pinBlame(int line, Offset global) {
+    _blameHoverTimer?.cancel();
+    setState(() {
+      if (_blamePinned && _blameHover?.$1 == line) {
+        _blamePinned = false;
+        _blameHover = null;
+        return;
+      }
+      _blamePinned = true;
+      _blameHover = (line, global);
+    });
+  }
+
+  /// [commit]'s author, when, and subject, as GitLens writes a line's
+  /// blame.
+  String _blameText(BuildContext context, IdeGitBlameInformation commit) =>
+      formatGitBlame(ideGitBlameTemplate, commit, l10n: context.l10n);
+
+  /// As wide as [blame]'s longest text, in the code's size.
+  double _blameTextWidth(
+    BuildContext context,
+    IdeGitAnnotations blame,
+    int lineCount,
+  ) {
+    var longest = blame.loaded ? '' : '0000/00/00';
+    for (var line = 1; line <= lineCount; line++) {
+      if (blame.at(line) case final commit?) {
+        final text = _blameText(context, commit);
+        if (text.length > longest.length) longest = text;
+      }
+    }
+    final measure = TextPainter(
+      text: TextSpan(text: longest, style: _codeStyle(context)),
+      textDirection: TextDirection.ltr,
+      textScaler: _codeScaler(context),
+    )..layout();
+    final width = measure.width;
+    measure.dispose();
+    return width;
+  }
+
+  /// The commit of the blame hovered (or pressed), by the pointer, as
+  /// GitLens's card shows it.
+  Widget? _blameHoverCard() {
+    final hover = _blameHover;
+    if (hover == null) return null;
+    final (line, global) = hover;
+    final commit = _commitAt(line);
+    final box = context.findRenderObject();
+    if (commit == null || box is! RenderBox) return null;
+    final local = box.globalToLocal(global);
+    // Inside the panel: under the line, or over it by the panel's bottom.
+    final width = math.min(460.0, math.max(240.0, box.size.width - 16));
+    final left = math.min(local.dx + 12, box.size.width - width - 8);
+    final below = local.dy < box.size.height - 220;
+    return Positioned(
+      left: math.max(8, left),
+      top: below ? local.dy + 12 : null,
+      bottom: below ? null : box.size.height - local.dy + 12,
+      // The card's own presses are not the editor's, and the pointer
+      // resting on it keeps it: its hash and copying can be used.
+      child: MouseRegion(
+        onHover: (_) => _blameHoverTimer?.cancel(),
+        onExit: (_) => _hideBlameHoverSoon(),
+        child: IdeGitBlameCard(
+          key: _blameCardKey,
+          commit: commit,
+          width: width,
+          onCopy: () =>
+              unawaited(Clipboard.setData(ClipboardData(text: commit.hash))),
+          // Its hash shows the commit's details, in the file's repository
+          // (not the project's, which a nested repository is out of); the
+          // panel's own card goes.
+          onOpenCommit: switch (widget.git) {
+            final git?
+                when widget.onShowCommit != null && !commit.uncommitted =>
+              () {
+                _hideBlameHover();
+                widget.onShowCommit!(git, _request.path, commit.hash);
+              },
+            _ => null,
+          },
+        ),
+      ),
+    );
+  }
+
+  /// [line]'s commit: the caret's line's in the editor, else the file's
+  /// blame as saved.
+  IdeGitBlameInformation? _commitAt(int line) {
+    for (final blame in _lineBlame.lines) {
+      if (blame.lineNumber == line) return blame.commit;
+    }
+    return _blame?.at(line);
+  }
+
+  /// The caret's lines' blame, after their ends (as VS Code's Git extension
+  /// shows it): who last changed each, when, and in which commit.
+  List<EditorDecoration> _lineBlameDecorations(BuildContext context) {
+    final lines = _lineBlame.lines;
+    final snapshot = _edit?.controller.document.snapshot;
+    if (lines.isEmpty || snapshot == null) return const [];
+    final color = themeColors['git.blame.editorDecorationForeground'];
+    return [
+      for (final line in lines)
+        if (line.lineNumber <= snapshot.lineCount)
+          EditorDecoration(
+            start: snapshot.contentEnds[line.lineNumber - 1],
+            end: snapshot.contentEnds[line.lineNumber - 1],
+            afterText: switch (line.commit) {
+              final commit? => _blameText(context, commit),
+              null => context.l10n.gitBlameNotCommittedYet,
+            },
+            afterColor: color,
+            afterMargin: ideGitBlameMargin,
+          ),
+    ];
+  }
+
+  /// Shows the commit of the blame the pointer is on, once it rests there:
+  /// the text painted past the end of a line with a caret, where the
+  /// editor paints it.
+  void _inlineBlameHovered(PointerHoverEvent event) {
+    if (_blamePinned) return;
+    final line = _inlineBlameLineAt(event.position);
+    if (line != null) return _blameHoverAt(line, event.position);
+    // On the line, or on the card to reach: kept.
+    if (_onBlameLine(event.position) || _onBlameCard(event.position)) {
+      _blameHoverTimer?.cancel();
+      return;
+    }
+    _hideBlameHoverSoon();
+  }
+
+  /// A press on the blame past a line's end: its commit's details there,
+  /// as GitLens shows them; a press anywhere else puts them away.
+  void _inlineBlamePressed(PointerDownEvent event) {
+    final line = _inlineBlameLineAt(event.position);
+    if (line == null) {
+      if (_blameHover != null) _hideBlameHover();
+      return;
+    }
+    if (_commitAt(line) == null) return;
+    _pinBlame(line, event.position);
+  }
+
+  /// The line of the blame painted at [global] (a line with a caret's),
+  /// where the editor paints it: none when the pointer is not on one.
+  int? _inlineBlameLineAt(Offset global) {
+    final lines = _lineBlame.lines;
+    final view = _editor.currentState?.view;
+    final box = _editor.currentState?.surfaceBox;
+    final snapshot = _edit?.controller.document.snapshot;
+    if (lines.isEmpty || view == null || box == null || snapshot == null) {
+      return null;
+    }
+    final local = box.globalToLocal(global);
+    for (final line in lines) {
+      if (line.commit == null || line.lineNumber > snapshot.lineCount) {
+        continue;
+      }
+      final caret = view.caretRectAt(snapshot.contentEnds[line.lineNumber - 1]);
+      if (caret == null) continue;
+      final start = caret.right + ideGitBlameMargin;
+      if (local.dy < caret.top ||
+          local.dy >= caret.bottom ||
+          local.dx < start - 8 ||
+          local.dx > start + 640) {
+        continue;
+      }
+      return line.lineNumber;
+    }
+    return null;
   }
 
   /// The lines asked for, from their first's start to their last's end,
@@ -524,12 +887,18 @@ class _FilePreviewState extends State<FilePreview> {
     _syncAgent();
     return ColoredBox(
       color: AppColors.code,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          _bar(context),
-          ?_notice(context),
-          Expanded(child: _body(context)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _bar(context),
+              ?_notice(context),
+              Expanded(child: _body(context)),
+            ],
+          ),
+          ?_blameHoverCard(),
         ],
       ),
     );
@@ -668,16 +1037,24 @@ class _FilePreviewState extends State<FilePreview> {
           scrolled: widget.diffScroll,
           onScrolled: widget.onDiffScrolled,
           highlights: widget.highlights,
+          git: widget.git,
+          commitId: _request.commitId,
           // Lines of the file as it is now.
           onCopy: deleted
               ? null
               : (text, start, end) => _copied(start, end, text),
         );
       case _Text(:final lines):
-        if (_edit case final edit?) return _editing(edit);
+        if (_edit case final edit?) return _editing(context, edit);
         final range = _request.range;
         final gutter = _gutter(context, lines.length);
         final wrap = EditorWordWrap.on.value;
+        final blame = _blame;
+        final blameWidth = blame == null || blame.empty
+            ? 0.0
+            : _blameTextWidth(context, blame, lines.length) +
+                  ideGitBlameMargin +
+                  24;
         return _Lines(
           key: ValueKey(('text', _request.path)),
           count: lines.length,
@@ -685,17 +1062,30 @@ class _FilePreviewState extends State<FilePreview> {
           lineHeight: _lineHeight(context),
           reveal: widget.reveal,
           target: range == null ? null : range.start - 1,
-          width: _widthOf(context, lines, () => lines) + gutter + 20,
+          width:
+              _widthOf(context, lines, () => lines) + gutter + blameWidth + 20,
           onCopy: (first, last, text) => _copied(first + 1, last + 1, text),
-          row: (context, i, sideways) => _LineRow(
-            number: i + 1,
-            text: lines[i],
-            colors: _colors.elementAtOrNull(i),
-            gutter: gutter,
-            sideways: sideways,
-            wrap: wrap,
-            marked: range != null && i + 1 >= range.start && i + 1 <= range.end,
-          ),
+          row: (context, i, sideways, current) {
+            final commit = current && blameWidth > 0 ? blame?.at(i + 1) : null;
+            return _LineRow(
+              number: i + 1,
+              text: lines[i],
+              colors: _colors.elementAtOrNull(i),
+              gutter: gutter,
+              blame: commit == null ? null : _blameText(context, commit),
+              blameColor: themeColors['git.blame.editorDecorationForeground'],
+              onBlameHover: commit == null
+                  ? null
+                  : (global) => _blameHoverAt(i + 1, global),
+              onBlameTap: commit == null
+                  ? null
+                  : (global) => _pinBlame(i + 1, global),
+              sideways: sideways,
+              wrap: wrap,
+              marked:
+                  range != null && i + 1 >= range.start && i + 1 <= range.end,
+            );
+          },
         );
     }
   }
@@ -754,7 +1144,7 @@ class _FilePreviewState extends State<FilePreview> {
 
   /// The file's text in the IDE's editor, the lines asked for marked until
   /// it is edited; saved with the IDE's keys.
-  Widget _editing(SidePanelFileEdit edit) {
+  Widget _editing(BuildContext context, SidePanelFileEdit edit) {
     final range = _range;
     final marked =
         range != null &&
@@ -762,23 +1152,37 @@ class _FilePreviewState extends State<FilePreview> {
         identical(_markedIn, edit.controller.document.snapshot);
     return _saved(
       edit,
-      IdeCodeEditor(
-        key: _editor,
-        controller: edit.controller,
-        path: _request.path,
-        highlights: widget.highlights,
-        interfaceSized: false,
-        formatter: widget.formatter,
-        agent: _agent,
-        decorations: [
-          if (marked)
-            EditorDecoration(
-              start: range.$1,
-              end: range.$2,
-              isWholeLine: true,
-              backgroundColor: themeColors['editor.rangeHighlightBackground'],
-            ),
-        ],
+      // The blame past a line's end is painted, not a widget: a press on it
+      // is taken here, before the editor takes it as a press on the line.
+      Listener(
+        onPointerDown: _inlineBlamePressed,
+        child: MouseRegion(
+          onHover: _inlineBlameHovered,
+          onExit: (_) {
+            // A moment to reach the card.
+            if (!_blamePinned) _hideBlameHoverSoon();
+          },
+          child: IdeCodeEditor(
+            key: _editor,
+            controller: edit.controller,
+            path: _request.path,
+            highlights: widget.highlights,
+            interfaceSized: false,
+            formatter: widget.formatter,
+            agent: _agent,
+            decorations: [
+              ..._lineBlameDecorations(context),
+              if (marked)
+                EditorDecoration(
+                  start: range.$1,
+                  end: range.$2,
+                  isWholeLine: true,
+                  backgroundColor:
+                      themeColors['editor.rangeHighlightBackground'],
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1014,6 +1418,7 @@ class _Lines extends StatefulWidget {
     BuildContext context,
     int index,
     ScrollController sideways,
+    bool current,
   )
   row;
   final double width;
@@ -1029,6 +1434,10 @@ class _Lines extends StatefulWidget {
 class _LinesState extends State<_Lines> {
   final _scroll = SmoothScrollController();
   final _sideways = ScrollController();
+
+  /// The row the pointer is on (or the one asked for): the one whose blame
+  /// shows, as a caret's line's does in the editor.
+  late int? _current = widget.target;
 
   /// Where each row is, wrapped: rows of their own heights.
   final _list = ListController();
@@ -1049,6 +1458,7 @@ class _LinesState extends State<_Lines> {
         oldWidget.target != widget.target ||
         oldWidget.wrap != widget.wrap ||
         oldWidget.lineHeight != widget.lineHeight) {
+      if (oldWidget.target != widget.target) _current = widget.target;
       _reveal();
     }
   }
@@ -1090,10 +1500,15 @@ class _LinesState extends State<_Lines> {
       builder: (context, constraints) {
         // The measured width already includes gutters and change markers.
         final width = math.max(constraints.maxWidth, widget.width + 24);
-        Widget row(BuildContext context, int index) => _SelectableRow(
-          index: index,
-          lines: _selection,
-          child: widget.row(context, index, _sideways),
+        Widget row(BuildContext context, int index) => MouseRegion(
+          onHover: (_) {
+            if (_current != index) setState(() => _current = index);
+          },
+          child: _SelectableRow(
+            index: index,
+            lines: _selection,
+            child: widget.row(context, index, _sideways, index == _current),
+          ),
         );
         const padding = EdgeInsets.symmetric(vertical: 6);
         // Both scrollbars at the edges of the view, not of the lines as
@@ -1269,6 +1684,10 @@ class _LineRow extends StatelessWidget {
     this.colors,
     this.marked = false,
     this.wrap = false,
+    this.blame,
+    this.blameColor,
+    this.onBlameHover,
+    this.onBlameTap,
   });
 
   final int number;
@@ -1281,6 +1700,12 @@ class _LineRow extends StatelessWidget {
   final List<TextSpan>? colors;
   final bool marked;
 
+  /// The line's blame, past the end of it; none without one.
+  final String? blame;
+  final Color? blameColor;
+  final ValueChanged<Offset>? onBlameHover;
+  final ValueChanged<Offset>? onBlameTap;
+
   @override
   Widget build(BuildContext context) {
     final style = AppFonts.codeStyle(12).copyWith(height: 1.5);
@@ -1288,6 +1713,19 @@ class _LineRow extends StatelessWidget {
         ? themeColors['editor.rangeHighlightBackground']
         : Colors.transparent;
     final shown = text.replaceAll('\t', '    ');
+    final textStyle = style.copyWith(color: themeColors['editor.foreground']);
+    // The blame, past the line's end: as wide as the line is (one line).
+    double? blameLeft;
+    if (blame != null && !wrap) {
+      final measure = TextPainter(
+        text: TextSpan(text: shown, style: textStyle),
+        textDirection: TextDirection.ltr,
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      blameLeft = gutter + 20 + measure.width + ideGitBlameMargin;
+      measure.dispose();
+    }
     return ColoredBox(
       color: background,
       child: Stack(
@@ -1305,13 +1743,24 @@ class _LineRow extends StatelessWidget {
                   maxLines: wrap ? null : 1,
                   softWrap: wrap,
                   overflow: wrap ? null : TextOverflow.clip,
-                  style: style.copyWith(
-                    color: themeColors['editor.foreground'],
-                  ),
+                  style: textStyle,
                 ),
               ),
             ],
           ),
+          if (blameLeft != null)
+            Positioned(
+              left: blameLeft,
+              top: 0,
+              bottom: 0,
+              child: _BlameInline(
+                text: blame!,
+                color: blameColor,
+                onHover: onBlameHover,
+                onTap: onBlameTap,
+                style: style,
+              ),
+            ),
           Positioned(
             left: 0,
             top: 0,
@@ -1329,17 +1778,23 @@ class _LineRow extends StatelessWidget {
                 child: SelectionContainer.disabled(
                   child: SizedBox(
                     width: gutter + 20,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 20),
-                      child: Text(
-                        '$number',
-                        textAlign: TextAlign.right,
-                        style: style.copyWith(
-                          color: marked
-                              ? themeColors['editorLineNumber.activeForeground']
-                              : themeColors['editorLineNumber.foreground'],
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: gutter,
+                          child: Text(
+                            '$number',
+                            textAlign: TextAlign.right,
+                            style: style.copyWith(
+                              color: marked
+                                  ? themeColors['editorLineNumber.activeForeground']
+                                  : themeColors['editorLineNumber.foreground'],
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 20),
+                      ],
                     ),
                   ),
                 ),
@@ -1349,6 +1804,54 @@ class _LineRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// A line's blame past the end of it in [_Lines]: who last changed it,
+/// when, and in which commit; its commit's details on hover, pinned by a
+/// press.
+class _BlameInline extends StatelessWidget {
+  const _BlameInline({
+    required this.text,
+    required this.style,
+    this.color,
+    this.onHover,
+    this.onTap,
+  });
+
+  final String text;
+  final TextStyle style;
+  final Color? color;
+  final ValueChanged<Offset>? onHover;
+  final ValueChanged<Offset>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget cell = Align(
+      alignment: Alignment.centerLeft,
+      heightFactor: 1,
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.fade,
+        style: style.copyWith(color: color),
+      ),
+    );
+    if (onHover != null || onTap != null) {
+      cell = MouseRegion(
+        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        onHover: onHover == null ? null : (event) => onHover!(event.position),
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: onTap == null
+              ? null
+              : (event) => onTap!(event.position),
+          child: cell,
+        ),
+      );
+    }
+    return cell;
   }
 }
 

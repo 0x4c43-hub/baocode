@@ -97,6 +97,39 @@ int? ideGitSavedLineNumber(int lineNumber, List<LineRangeMapping> changes) {
   return lineNumber - delta;
 }
 
+/// A file's blame, as Git reads it: each range of its lines with the
+/// commit that last changed them.
+class IdeGitBlame {
+  IdeGitBlame(Iterable<IdeGitBlameInformation> information)
+    : _ranges = [
+        for (final commit in information)
+          for (final range in commit.ranges)
+            (range.startLineNumber, range.endLineNumber, commit),
+      ]..sort((a, b) => a.$1.compareTo(b.$1));
+
+  final List<(int, int, IdeGitBlameInformation)> _ranges;
+
+  /// Whether it has no line: a file Git does not track.
+  bool get empty => _ranges.isEmpty;
+
+  /// The commit of one-based [lineNumber]; null where there is none.
+  IdeGitBlameInformation? at(int lineNumber) {
+    var low = 0;
+    var high = _ranges.length;
+    while (low < high) {
+      final middle = (low + high) >> 1;
+      if (_ranges[middle].$1 <= lineNumber) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    if (low == 0) return null;
+    final (_, end, commit) = _ranges[low - 1];
+    return lineNumber <= end ? commit : null;
+  }
+}
+
 /// The blame of the lines with a caret in the active editor
 /// (`GitBlameController`): [lines], once the file's blame has been read
 /// and its unsaved changes diffed; notifies as they change.

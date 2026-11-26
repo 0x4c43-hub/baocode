@@ -676,16 +676,26 @@ class AgentSidePanel extends ChangeNotifier {
     if (request.plan) return _openPlan(conversation, tabs, request);
     if (listAway && !request.diff) _listAway = true;
     final list = request.diff ? tabs.diffs : tabs.files;
-    if (request.diff) {
+    final commit = request.commitId;
+    if (request.diff && commit == null) {
       // One change at a time, as the log shows them: the one before goes,
-      // but for edits not saved.
+      // but for edits not saved; a commit's diff, which has a tab of its
+      // own, stays.
       list.removeWhere((tab) {
-        final other = tab.path != request.path && !tab.dirty;
+        final other =
+            tab.path != request.path &&
+            tab.request.commitId == null &&
+            !tab.dirty;
         if (other) tab._dropEdit(this);
         return other;
       });
     }
-    var tab = list.where((tab) => tab.path == request.path).firstOrNull;
+    // A commit's diff is its own tab, not the file's changes.
+    var tab = list
+        .where(
+          (tab) => tab.path == request.path && tab.request.commitId == commit,
+        )
+        .firstOrNull;
     if (tab == null) {
       tab = SidePanelTab(request);
       // In place of the one looked at last, if this is a look too.

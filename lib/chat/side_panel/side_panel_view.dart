@@ -538,6 +538,7 @@ class AgentSidePanelView extends StatelessWidget {
     this.paths,
     this.colorize,
     this.onOpenInIde,
+    this.onShowCommit,
     this.formatter,
     this.watchDirectory,
     this.searchEngine = ideSearchText,
@@ -637,6 +638,10 @@ class AgentSidePanelView extends StatelessWidget {
 
   /// Opens a file shown in the IDE instead.
   final ValueChanged<FileOpenRequest>? onOpenInIde;
+
+  /// Shows a commit's details in the panel's changes page: a line's blame,
+  /// its hash pressed.
+  final ShowCommitDetails? onShowCommit;
 
   /// Formats a file edited here with the project's language servers.
   final IdeTextFormatter? formatter;
@@ -1062,6 +1067,15 @@ class AgentSidePanelView extends StatelessWidget {
     return found ?? _git;
   }
 
+  /// The repository [path] is in, and none for a path outside it: the
+  /// file's blame shows only where Git holds the file.
+  IdeGitRepository? _gitHolding(String path) {
+    final git = _gitOf(path);
+    if (git == null) return null;
+    final root = git.service.root;
+    return root == path || _paths.isWithin(root, path) ? git : null;
+  }
+
   /// Tells of a file operation that failed.
   void _showFileError(BuildContext context, Object error) {
     final l10n = context.l10n;
@@ -1314,7 +1328,7 @@ class AgentSidePanelView extends StatelessWidget {
               _Tab(
                 active: identical(active, tab),
                 icon: FileIcon(tab.path, size: _Tab.iconSize),
-                label: _paths.basename(tab.path),
+                label: _tabLabel(tab),
                 description: descriptions[i],
                 tooltip: tab.path,
                 status: tab.diff ? statuses[tab.path] : null,
@@ -1337,6 +1351,16 @@ class AgentSidePanelView extends StatelessWidget {
       tab.diff && (status?.strikeThrough ?? false)
       ? child
       : FileDraggable(files: [ComposerFile(tab.path)], child: child);
+
+  /// [tab]'s name: its file's, and the commit's where it shows one's
+  /// changes (as VS Code names a commit's diff editors).
+  String _tabLabel(SidePanelTab tab) {
+    final name = _paths.basename(tab.path);
+    final commit = tab.request.commitId;
+    if (commit == null) return name;
+    final short = commit.length > 8 ? commit.substring(0, 8) : commit;
+    return '$name ($short)';
+  }
 
   /// A file's tab's menu, as the IDE editor's: closing it and the others,
   /// the file for the chat, copying its path, then where else it opens.
@@ -1461,6 +1485,11 @@ class AgentSidePanelView extends StatelessWidget {
     readBytes: tab.request.local ? readFileBytes : readBytes,
     paths: tab.request.local ? null : paths,
     colorize: colorize,
+    // A commit's diff blames the commit's lines, in the file's repository.
+    git: tab.request.local || (tab.request.diff && tab.request.commitId == null)
+        ? null
+        : _gitHolding(tab.path),
+    onShowCommit: onShowCommit,
     onOpenFile: (request) {
       final root = _rootOf(request.path);
       if (root == null) return;

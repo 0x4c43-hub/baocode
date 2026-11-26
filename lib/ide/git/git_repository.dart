@@ -682,23 +682,20 @@ class IdeGitRepository extends ChangeNotifier {
   });
 
   /// Force-push the current branch to a remote and branch, with lease.
-  Future<void> pushToForce(
-    String remote,
-    String target, {
-    bool tags = false,
-  }) => _whileSyncing(() async {
-    final branch = _state?.head.branch;
-    if (branch == null) {
-      throw const IdeGitException('HEAD is on no branch: nothing to push.');
-    }
-    await service.push(
-      remote,
-      '$branch:$target',
-      setUpstream: _state?.head.upstream == null,
-      forceWithLease: true,
-      followTags: tags,
-    );
-  });
+  Future<void> pushToForce(String remote, String target, {bool tags = false}) =>
+      _whileSyncing(() async {
+        final branch = _state?.head.branch;
+        if (branch == null) {
+          throw const IdeGitException('HEAD is on no branch: nothing to push.');
+        }
+        await service.push(
+          remote,
+          '$branch:$target',
+          setUpstream: _state?.head.upstream == null,
+          forceWithLease: true,
+          followTags: tags,
+        );
+      });
 
   /// Git: Pull (`Repository.pull`): pulls the branch's upstream. Throws
   /// when the branch has none (`Repository.pull`'s "no tracking
@@ -927,6 +924,11 @@ class IdeGitRepository extends ChangeNotifier {
 
   Future<List<IdeGitCommitChange>> commitChanges(String commit) =>
       service.commitChanges(commit);
+
+  /// [id]'s commit, whether the graph has loaded it or not; null where
+  /// Git cannot tell (a commit another repository has).
+  Future<IdeGitCommit?> commitById(String id) async =>
+      (await service.log(refs: [id], limit: 1)).firstOrNull;
 
   /// The lines [commit] added and deleted in each of its files.
   Future<Map<String, ({int? added, int? deleted})>> commitStats(

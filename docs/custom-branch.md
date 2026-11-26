@@ -35,6 +35,13 @@
 | `lib/ide/terminal/terminal_panel.dart`、`lib/workspace/terminal_deck.dart` | 终端上叠 `ZmodemOverlay` |
 | `lib/ide/terminal/terminal_view.dart` | 点击即取回键盘与输入法连接；Ctrl/⌘ + 滚轮缩放；失效连接的兜底 |
 | `lib/ide/terminal/terminal_widget.dart` | 滚轮带 Ctrl/⌘ 时交给缩放，不滚动 |
+| `lib/chat/side_panel/file_preview.dart`、`side_panel_view.dart` | 侧栏文件预览显示当前行/悬停行的 Git blame（作者、时间、提交摘要），悬停出提交卡片；点卡片里的 hash 在侧栏「变更」页打开该提交的详情（作者、父提交、文件数与增删、所在分支、文件列表），并同时显示这个文件在该提交的 diff；只有文件在仓库里时显示 |
+| `lib/ide/ide_code_editor.dart` | 侧栏编辑器接受 `lineAnnotations`，把 blame 列交给编辑表面画 |
+| `lib/ide/git/git_blame_card.dart` | GitLens 风格的提交卡片（作者、时间、摘要、可点的 hash 与复制） |
+| `lib/ide/ide_code_diff.dart`、`lib/ide/git/git_service.dart`、`git_annotations.dart`、`git_blame.dart` | diff 两侧的行内 blame（新版按提交本身、旧版按父提交），悬停行尾显示、出提交卡片，卡片 hash 可点 |
+| `lib/ide/git/ide_git_log_view.dart`、`git_repository.dart` | 点 blame 的 hash 选中该提交并显示其文件 diff；提交不在已加载的历史里时按 id 单独读取详情 |
+| `lib/chat/side_panel/git_changes.dart`、`file_open.dart`、`side_panel_controller.dart` | 提交的文件 diff 作为独立页签打开（标题带短 hash），与本地变更的 diff 互不覆盖 |
+| `lib/ide/ide_workbench.dart`、`lib/workbench.dart` | 提交详情的接线；侧栏点 blame 不再跳 IDE |
 | `packages/bao_remote/lib/src/claude/claude_sessions.dart` | 会话分支的末梢取最后一条**消息**，`system/api_error` 之类的记录不再把分支截断 |
 | `lib/kernel/claude_code/claude_code_kernel.dart` | 打开会话先读 25 轮（上游 10），往上每次 50 轮（上游 20） |
 | `lib/chat/chat_history_view.dart` | 离顶部 900px 就预取更早的分页（上游 300） |

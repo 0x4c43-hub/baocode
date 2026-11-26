@@ -748,6 +748,9 @@ class IdeWorkbenchState extends State<IdeWorkbench> {
   /// on the panel's TERMINAL tab.
   void showTerminalTask(String id) => _terminalView.showTask(id);
 
+  /// Shows [hash]'s commit in the Git log (a file's blame, pressed).
+  void showCommit(String hash) => _scmService.showCommitInLog(hash);
+
   /// Has the editor's last keys in its document, for what is unsaved to be
   /// all of it (before its window closes, or the app quits).
   Future<void> flush() async => _editors.flush();
@@ -769,11 +772,8 @@ class IdeWorkbenchState extends State<IdeWorkbench> {
   /// What the header's Git menu offers for this window. [clone] is the
   /// app's (it opens the cloned folder); the rest work on the Source
   /// Control repository and its Git service.
-  GitMenuActions gitMenuActions(VoidCallback clone) => ideGitMenuActions(
-    context: context,
-    scm: _scmService,
-    clone: clone,
-  );
+  GitMenuActions gitMenuActions(VoidCallback clone) =>
+      ideGitMenuActions(context: context, scm: _scmService, clone: clone);
 
   // --- Keybindings ---------------------------------------------------------
 

@@ -2298,11 +2298,14 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
       return _DiffArea(
         key: ObjectKey(diff.files),
         diff: diff,
+        git: git,
         root: state.root,
         paths: git.service.pathContext,
         border: _border,
         onStep: _log.stepDiff,
         onShow: _log.showDiffAt,
+        onShowCommit: (path, commit) =>
+            unawaited(_showCommitAt(git, path, commit)),
         onAsk: widget.onAsk,
         onClose: () {
           final focused = diff.focus;
@@ -3260,6 +3263,35 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
 
   // --- Details -------------------------------------------------------------
 
+  /// Shows [commit]'s details beside the table, and its changes to [path]
+  /// in the table's place: a commit pressed in a line's blame.
+  Future<void> _showCommitAt(
+    IdeGitRepository git,
+    String path,
+    String commit,
+  ) async {
+    try {
+      final data = await git.commitById(commit);
+      final changes = await git.commitChanges(commit);
+      if (!mounted) return;
+      if (data == null) return;
+      final files = [
+        for (final change in changes) ideCommitDiffFile(git, data, change),
+      ];
+      final paths = git.service.pathContext;
+      final target = paths.normalize(path);
+      final at = changes.indexWhere((change) {
+        if (paths.normalize(change.path) == target) return true;
+        final before = change.originalPath;
+        return before != null && paths.normalize(before) == target;
+      });
+      _log.reveal(commit);
+      if (files.isNotEmpty) _log.showDiff(files, at < 0 ? 0 : at);
+    } catch (_) {
+      // Not a commit this repository has.
+    }
+  }
+
   Widget _details(IdeGitRepository git, IdeGitState state) {
     final selected = _selectedOf(git, state);
     final local = selected == ideGitWorkingTreeId;
@@ -3286,6 +3318,51 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
         ],
       );
     }
+    // A commit the graph has not loaded (opened from a line's blame):
+    // read and show it anyway.
+    if (!local && row == null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Visibility(
+            visible: false,
+            maintainState: true,
+            child: widget.changes,
+          ),
+          FutureBuilder<IdeGitCommit?>(
+            key: ValueKey(('commit', selected)),
+            future: _commitById(git, selected),
+            builder: (context, fetched) {
+              final commit = fetched.data;
+              if (commit == null) {
+                return fetched.connectionState == ConnectionState.done
+                    ? _Placeholder(context.l10n.gitLogSelectCommit)
+                    : const Center(child: _Spinner(size: 16));
+              }
+              return _CommitDetails(
+                key: ValueKey(commit.id),
+                git: git,
+                commit: commit,
+                log: _log,
+                root: state.root,
+                border: _border,
+                onSelect: (id) => _select(id, reveal: true),
+                onReword: (message) => _reword(git, commit, message),
+                onOpenDiff: (files, index) {
+                  if (widget.onOpenDiff case final open?) {
+                    open(files[index]);
+                  } else {
+                    _log.showDiff(files, index);
+                  }
+                },
+                onOpen: widget.onOpen,
+                onAddToChat: widget.onAddToChat,
+              );
+            },
+          ),
+        ],
+      );
+    }
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -3300,7 +3377,7 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
               _CommitDetails(
                 key: ValueKey(row.commit.id),
                 git: git,
-                row: row,
+                commit: row.commit,
                 log: _log,
                 root: state.root,
                 border: _border,
@@ -3322,6 +3399,14 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
       ],
     );
   }
+
+  /// The commits read for those the graph does not have, by id.
+  final Map<String, Future<IdeGitCommit?>> _commitsById = {};
+
+  Future<IdeGitCommit?> _commitById(IdeGitRepository git, String id) =>
+      _commitsById[id] ??= git
+          .commitById(id)
+          .then<IdeGitCommit?>((commit) => commit, onError: (Object _) => null);
 }
 
 /// `2026-10-26 14:45`, as the table shows a date; with [seconds],
@@ -3516,7 +3601,7 @@ class _CommitDetails extends StatelessWidget {
   const _CommitDetails({
     super.key,
     required this.git,
-    required this.row,
+    required this.commit,
     required this.log,
     required this.root,
     required this.border,
@@ -3528,7 +3613,7 @@ class _CommitDetails extends StatelessWidget {
   });
 
   final IdeGitRepository git;
-  final IdeGraphRow row;
+  final IdeGitCommit commit;
 
   /// Saves the message edited (Edit Commit Message).
   final Future<void> Function(String message) onReword;
@@ -3539,8 +3624,6 @@ class _CommitDetails extends StatelessWidget {
   final void Function(List<IdeGitDiffFile> files, int index) onOpenDiff;
   final ValueChanged<String>? onOpen;
   final ValueChanged<List<ComposerFile>>? onAddToChat;
-
-  IdeGitCommit get commit => row.commit;
 
   @override
   Widget build(BuildContext context) {
@@ -4117,16 +4200,19 @@ class _DiffArea extends StatefulWidget {
   const _DiffArea({
     super.key,
     required this.diff,
+    required this.git,
     required this.root,
     required this.paths,
     required this.border,
     required this.onStep,
     required this.onShow,
     required this.onClose,
+    this.onShowCommit,
     this.onAsk,
   });
 
   final IdeGitLogDiff diff;
+  final IdeGitRepository git;
   final String root;
   final p.Context paths;
 
@@ -4137,6 +4223,10 @@ class _DiffArea extends StatefulWidget {
   final void Function(int delta, {IdeDiffStart start}) onStep;
   final ValueChanged<int> onShow;
   final VoidCallback onClose;
+
+  /// Shows a commit a line's blame hash presses: its details beside the
+  /// table, its changes to the file shown in the table's place.
+  final void Function(String path, String commit)? onShowCommit;
 
   @override
   State<_DiffArea> createState() => _DiffAreaState();
@@ -4464,10 +4554,15 @@ class _DiffAreaState extends State<_DiffArea> {
               child: _DiffBody(
                 key: ValueKey(file),
                 file: file,
+                git: widget.git,
                 start: diff.start,
                 code: _codeOf(file),
                 position: _position,
                 border: widget.border,
+                onShowCommit: switch (widget.onShowCommit) {
+                  final show? => (commit) => show(file.path, commit),
+                  null => null,
+                },
                 onAsk: switch (widget.onAsk) {
                   final ask? => (change, line) => ask(
                     context.l10n.gitAskAiHunkPrompt(
@@ -4492,14 +4587,20 @@ class _DiffBody extends StatefulWidget {
   const _DiffBody({
     super.key,
     required this.file,
+    required this.git,
     required this.start,
     required this.code,
     required this.position,
     required this.border,
+    this.onShowCommit,
     this.onAsk,
   });
 
   final IdeGitDiffFile file;
+  final IdeGitRepository git;
+
+  /// Shows the file at the commit a line's blame hash pressed.
+  final ValueChanged<String>? onShowCommit;
   final void Function(String change, int line)? onAsk;
 
   /// Between an image's sides.
@@ -4569,6 +4670,10 @@ class _DiffBodyState extends State<_DiffBody> {
           path: widget.file.path,
           original: data.$1,
           modified: data.$2,
+          // Its lines' blame: the commit's file as it was, or the file.
+          git: widget.git,
+          commitId: widget.file.commitId,
+          onShowCommit: widget.onShowCommit,
           start: widget.start,
           onEdit: widget.file.write,
           position: widget.position,

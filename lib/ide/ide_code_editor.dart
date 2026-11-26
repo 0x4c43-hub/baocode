@@ -113,6 +113,7 @@ class IdeCodeEditor extends StatefulWidget {
     this.bare = false,
     this.decorations = const [],
     this.decorationProviders = const [],
+    this.lineAnnotations,
     this.inlineSuggest,
     this.codeLens,
     this.gutterIconBuilder,
@@ -141,6 +142,10 @@ class IdeCodeEditor extends StatefulWidget {
   /// The extension-driven features to paint too (decoration types, inlay
   /// hints), each searched per visible line.
   final List<EditorDecorationProvider> decorationProviders;
+
+  /// A short text by each line, between the line numbers and the text
+  /// (the file's Git blame, in the side panel).
+  final EditorLineAnnotations? lineAnnotations;
 
   /// Ghost text of an inline completion, if any.
   final EditorInlineSuggestController? inlineSuggest;
@@ -183,6 +188,12 @@ class IdeCodeEditor extends StatefulWidget {
 
 class IdeCodeEditorState extends State<IdeCodeEditor> {
   final GlobalKey _surfaceKey = GlobalKey();
+
+  /// The surface's box, for a hover to place a card by (its rects are
+  /// surface-local).
+  RenderBox? get surfaceBox =>
+      _surfaceKey.currentContext?.findRenderObject() as RenderBox?;
+
   final WorkbenchThemeService _themes = WorkbenchThemeService.instance;
   TextMateSyntax? _ownTextMate;
   TextMateDocument? _highlight;
@@ -703,6 +714,7 @@ class IdeCodeEditorState extends State<IdeCodeEditor> {
           ],
           viewZones: parts?.zones ?? const [],
           decorationProviders: widget.decorationProviders,
+          lineAnnotations: widget.lineAnnotations,
           inlineSuggest: widget.inlineSuggest,
           codeLens: widget.codeLens,
           codeLensColors: EditorCodeLensColors.from(colors.get),

@@ -51,7 +51,8 @@ import 'ide/editor_word_wrap.dart';
 import 'ide/git/git_model.dart' show ideWorktreeOf;
 import 'ide/git/git_repository.dart';
 import 'ide/git/ide_git_clone_dialog.dart';
-import 'ide/git/ide_git_log_view.dart' show IdeGitWorktreeChoice;
+import 'ide/git/ide_git_log_view.dart'
+    show IdeGitWorktreeChoice, ideCommitDiffFile;
 import 'ide/git/repository_scan.dart';
 import 'ide/file_views.dart';
 import 'ide/file_service.dart'
@@ -4340,6 +4341,8 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
         _ => ideSearchText(root, query),
       },
       onOpenInIde: (request) => _openRequestInIde(thread, request),
+      onShowCommit: (git, path, commit) =>
+          unawaited(_showCommit(thread, git, path, commit)),
       // With its IDE's language servers.
       formatter:
           (path, text, {range, required tabSize, required insertSpaces}) =>
@@ -4775,6 +4778,58 @@ class _WorkbenchState extends State<Workbench> implements WindowDelegate {
     }
     if (request.diff) _revealAgentChange(thread, request.path);
     _inIdeOf(thread, (ide) => ide.open(request.path));
+  }
+
+  /// Shows [commit]'s details in [thread]'s side panel, as the Git log
+  /// shows a commit: who made it and when, its parents and files (each to
+  /// open in its diff). [git] is the file's repository, which the
+  /// project's may be outside of (a repository in one of its folders).
+  Future<void> _showCommit(
+    AgentThread thread,
+    IdeGitRepository git,
+    String path,
+    String commit,
+  ) async {
+    final root = thread.session.root;
+    if (root != null) {
+      _sidePanel.selectRepository(root, _shownFolders[git] ?? git.service.root);
+    }
+    _sidePanel
+      ..showSection(thread.session, SidePanelSection.changes)
+      ..showLog(thread.session);
+    final log = _sidePanel.scmOf(thread.session, git).log;
+    log.reveal(commit);
+    // Its changes to the file in the table's place, the details beside
+    // them, as the log shows a file pressed in a commit's list.
+    try {
+      final data = await git.commitById(commit);
+      final changes = await git.commitChanges(commit);
+      if (!mounted) return;
+      if (data != null) {
+        final files = [
+          for (final change in changes) ideCommitDiffFile(git, data, change),
+        ];
+        final paths = git.service.pathContext;
+        final target = paths.normalize(path);
+        final at = changes.indexWhere((change) {
+          if (paths.normalize(change.path) == target) return true;
+          final before = change.originalPath;
+          return before != null && paths.normalize(before) == target;
+        });
+        if (files.isNotEmpty) log.showDiff(files, at < 0 ? 0 : at);
+      }
+    } catch (_) {
+      // The details still show where the commit can be read.
+    }
+    // Its row, where the log has not loaded that far: a few pages on.
+    unawaited(() async {
+      for (var page = 0; page < 3; page++) {
+        if (!mounted) return;
+        if (git.graph?.any((row) => row.commit.id == commit) ?? false) return;
+        if (!git.graphHasMore && git.graph != null) return;
+        await git.loadMoreGraph();
+      }
+    }());
   }
 
   /// Whether [thread]'s pane is the one showing its project's terminals:

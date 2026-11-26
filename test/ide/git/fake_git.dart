@@ -174,7 +174,15 @@ class FakeGit {
         );
       case ['worktree', 'list', '--porcelain']:
         return IdeGitOutput(0, worktrees);
-      case [..., 'blame', '--root', '--incremental', '--', final path]:
+      case [
+        ...,
+        'blame',
+        '--root',
+        '--incremental',
+        _,
+        '--',
+        final path,
+      ] || [..., 'blame', '--root', '--incremental', '--', final path]:
         final output = blame[path];
         if (output == null) {
           return IdeGitOutput(128, '', "fatal: no such path '$path' in HEAD");

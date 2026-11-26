@@ -32,6 +32,7 @@ class FileOpenRequest {
     this.readOnly = false,
     this.preview = false,
     this.agentChange = false,
+    this.commitId,
   });
 
   /// Absolute, on the project's host (on this machine when [local]).
@@ -64,6 +65,11 @@ class FileOpenRequest {
   /// The change [diff] shows, when the session lists it.
   final FileChange? change;
 
+  /// The commit [diff] shows, where it is one's changes rather than the
+  /// file's pending ones: its blame is that commit's, and it keeps a tab of
+  /// its own.
+  final String? commitId;
+
   /// Reads [path]'s text before it changed; null when unknown.
   final Future<String> Function()? original;
 
@@ -87,6 +93,7 @@ class FileOpenRequest {
     readOnly: readOnly,
     preview: preview,
     agentChange: agentChange,
+    commitId: commitId,
   );
 
   @override
@@ -94,7 +101,8 @@ class FileOpenRequest {
       'FileOpenRequest($path${range == null ? '' : ', $range'}'
       '${diff ? ', diff' : ''}${plan ? ', plan' : ''}'
       '${local ? ', local' : ''}${readOnly ? ', read-only' : ''}'
-      '${preview ? ', preview' : ''}${agentChange ? ', agent change' : ''})';
+      '${preview ? ', preview' : ''}${agentChange ? ', agent change' : ''}'
+      '${commitId == null ? '' : ', $commitId'})';
 }
 
 /// Where a chat's files open (the agent window's side panel, the IDE's

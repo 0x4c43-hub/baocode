@@ -811,7 +811,10 @@ class IdeGitService {
   /// `git blame --root --incremental` of [path] as it is on disk (`blame2`);
   /// null where Git cannot blame it: untracked, outside the repository, or
   /// before the first commit.
-  Future<List<IdeGitBlameInformation>?> blame(String path) async {
+  Future<List<IdeGitBlameInformation>?> blame(
+    String path, {
+    String? rev,
+  }) async {
     try {
       final top = await repositoryRoot();
       if (top == null) return null;
@@ -821,6 +824,7 @@ class IdeGitService {
         'blame',
         '--root',
         '--incremental',
+        ?rev,
         '--',
         ..._relative(top, [path]),
       ]);

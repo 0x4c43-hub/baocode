@@ -58,6 +58,10 @@ class IdeGitAnnotations extends ChangeNotifier {
   /// Whether the blame has been read.
   bool get loaded => _ranges != null;
 
+  /// Whether it was read and has no line: a file Git does not track, which
+  /// shows no column.
+  bool get empty => _ranges?.isEmpty ?? false;
+
   /// Reads the blame again where the file was saved since.
   void sync() {
     if (_disposed || identical(_saved.value, document.savedText)) return;

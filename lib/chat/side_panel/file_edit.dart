@@ -46,7 +46,9 @@ class SidePanelFileEdit extends ChangeNotifier {
 
   /// [text] in place of what it had, not to be undone.
   void _load(String text) {
-    controller.document.replaceText(text);
+    controller.document
+      ..replaceText(text)
+      ..markSaved(text);
     controller
       ..syncFromDocument()
       ..detectIndentation();
@@ -66,6 +68,7 @@ class SidePanelFileEdit extends ChangeNotifier {
     try {
       await files.write(path, text, expectedText: _saved);
       _saved = text;
+      controller.document.markSaved(text);
       _error = null;
     } on Object catch (error) {
       _error = error;

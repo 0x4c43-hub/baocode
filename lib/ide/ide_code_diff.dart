@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart' show PointerHoverEvent;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'package:bao_editor/monaco/flutter/diff_editor.dart';
 import 'package:bao_editor/monaco/flutter/diff_editor_model.dart';
@@ -22,7 +24,11 @@ import '../l10n/l10n.dart';
 import '../theme/app_theme.dart';
 import '../theme/codicons.dart';
 import '../theme/workbench_theme.dart' hide ColorScheme;
+import 'git/git_blame.dart'
+    show IdeGitBlame, formatGitBlame, ideGitBlameMargin, ideGitBlameTemplate;
+import 'git/git_blame_card.dart';
 import 'git/git_partial.dart' show ideGitHunkKeys, ideGitLineKey;
+import 'git/git_repository.dart' show IdeGitRepository;
 import 'ide_agent_edits.dart' show agentHunkSpans;
 import 'ide_code_editor.dart' show IdeCodeHighlights;
 import 'ide_diff_options.dart';
@@ -94,6 +100,9 @@ class IdeCodeDiff extends StatefulWidget {
     this.embedded = false,
     this.bars = true,
     this.horizontal,
+    this.git,
+    this.commitId,
+    this.onShowCommit,
   });
 
   final String path;
@@ -158,6 +167,17 @@ class IdeCodeDiff extends StatefulWidget {
   /// foot, would be out of view: the editors then show none.
   final ValueNotifier<List<IdeDiffHorizontal>>? horizontal;
 
+  /// The repository the file is in: its lines' blame shows after the
+  /// caret's line ([commitId]'s, or as the file is now); none without one.
+  final IdeGitRepository? git;
+
+  /// The commit whose file it is ([modified]: its text at that commit);
+  /// null for the file as it is now.
+  final String? commitId;
+
+  /// Shows [hash]'s changes to the file: a line's blame, its hash pressed.
+  final ValueChanged<String>? onShowCommit;
+
   /// How tall a line of it is.
   static double lineHeight(BuildContext context) {
     final painter = TextPainter(
@@ -214,6 +234,31 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
 
   /// The change the pointer is on: its lines' check boxes show.
   final ValueNotifier<int?> _hovered = ValueNotifier(null);
+
+  /// The file's blame at [IdeCodeDiff.commitId], or as the file is now.
+  IdeGitBlame? _blame;
+
+  /// The original text's blame, at the commit's parent: the left side's
+  /// lines show it too, hovered.
+  IdeGitBlame? _originalBlame;
+
+  /// The line of the modified text whose blame shows after it: the
+  /// caret's.
+  int? _blameLine;
+
+  /// The line of the modified text the pointer is over: its blame shows
+  /// too, as a line's blame shows as the pointer crosses it.
+  int? _blameOnHover;
+
+  /// The original text's line the pointer is over.
+  int? _originalBlameOnHover;
+
+  /// Where the pointer is on that blame, if on it, and the card there.
+  ({bool original, int line, Offset at})? _blameHover;
+  Timer? _blameHoverTimer;
+  final GlobalKey _blameCardKey = GlobalKey();
+  int _blameRequest = 0;
+  int _originalBlameRequest = 0;
 
   /// The lines of the modified text the agent changed, for the text they
   /// were found in.
@@ -323,6 +368,9 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
       _flush();
       _close();
       _open(widget.modified);
+    } else if (!identical(oldWidget.git, widget.git) ||
+        oldWidget.commitId != widget.commitId) {
+      _readBlame();
     } else if (oldWidget.line != widget.line) {
       _revealed = false;
       _reveal();
@@ -332,6 +380,7 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
   @override
   void dispose() {
     _texts++;
+    _blameHoverTimer?.cancel();
     _flush();
     _release?.call();
     _themes.removeListener(_changed);
@@ -358,6 +407,8 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
     final document = EditorDocumentModel(text);
     _modified = EditorSurfaceController(document: document)
       ..onCopy = widget.onCopy;
+    _modified.addListener(_caretMoved);
+    _readBlame();
     _original = IdeDiffOriginal(() async => widget.original)
       ..text.value = widget.original;
     _diff = IdeOriginalDiff(
@@ -384,8 +435,18 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
   }
 
   void _close() {
+    _blameRequest++;
+    _originalBlameRequest++;
+    _blame = null;
+    _originalBlame = null;
+    _blameLine = null;
+    _blameOnHover = null;
+    _originalBlameOnHover = null;
+    _blameHover = null;
+    _blameHoverTimer?.cancel();
     unawaited(_edits?.cancel());
     _edits = null;
+    _modified.removeListener(_caretMoved);
     _highlight?.removeListener(_changed);
     _highlight?.removeListener(_firstColors);
     _highlight?.dispose();
@@ -401,6 +462,321 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
 
   void _changed() {
     if (mounted) setState(() {});
+  }
+
+  /// Reads the file's blame again ([IdeCodeDiff.commitId]'s, or as it is):
+  /// its caret's line shows it.
+  void _readBlame() {
+    final git = widget.git;
+    final request = ++_blameRequest;
+    final originalRequest = ++_originalBlameRequest;
+    _blame = null;
+    _originalBlame = null;
+    _blameLine = null;
+    _blameOnHover = null;
+    _originalBlameOnHover = null;
+    if (git == null) return;
+    unawaited(
+      git.service.blame(widget.path, rev: widget.commitId).then((information) {
+        if (!mounted || request != _blameRequest) return;
+        setState(() {
+          _blame = information == null ? null : IdeGitBlame(information);
+          _blameLine = _caretLine();
+        });
+      }),
+    );
+    // The left side is the commit's parent's file: its lines were last
+    // changed by older commits.
+    if (widget.commitId case final commit?) {
+      unawaited(
+        git.service.blame(widget.path, rev: '$commit^').then((information) {
+          if (!mounted || originalRequest != _originalBlameRequest) return;
+          setState(() {
+            _originalBlame = information == null
+                ? null
+                : IdeGitBlame(information);
+          });
+        }),
+      );
+    }
+  }
+
+  /// One-based [line] of the modified text the caret is on.
+  int? _caretLine() {
+    final selections = _modified.selections;
+    if (selections.isEmpty) return null;
+    return _modified.document.snapshot
+        .positionAtOffset(selections.first.extentOffset)
+        .lineNumber;
+  }
+
+  /// The caret moved: its line's blame shows.
+  void _caretMoved() {
+    final line = _caretLine();
+    if (line == _blameLine) return;
+    if (mounted) setState(() => _blameLine = line);
+  }
+
+  /// The modified editor, laid out: its blame's place is read there.
+  EditorSurfaceView? get _modifiedView => switch (_modifiedKey.currentState) {
+    final EditorSurfaceView view => view,
+    _ => null,
+  };
+
+  /// The original editor's key, when it is there.
+  GlobalKey? get _originalKey => switch (_diff.controller) {
+    final controller? => GlobalObjectKey(controller),
+    null => null,
+  };
+
+  /// The original editor, laid out: its blame's place is read there.
+  EditorSurfaceView? get _originalView => switch (_originalKey?.currentState) {
+    final EditorSurfaceView view => view,
+    _ => null,
+  };
+
+  static RenderBox? _boxOf(GlobalKey? key) {
+    final box = key?.currentContext?.findRenderObject();
+    return box is RenderBox && box.hasSize ? box : null;
+  }
+
+  /// [blame]'s text after [lines], in [snapshot]'s text, as the IDE's
+  /// editor shows a line's.
+  List<EditorDecoration> _blameDecorationsOf(
+    BuildContext context,
+    WorkbenchColors colors,
+    IdeGitBlame? blame,
+    DocumentSnapshot snapshot,
+    Iterable<int> lines,
+  ) {
+    if (blame == null || blame.empty) return const [];
+    return [
+      for (final line in lines)
+        if (line >= 1 && line <= snapshot.lineCount)
+          if (blame.at(line) case final commit?)
+            EditorDecoration(
+              start: snapshot.contentEnds[line - 1],
+              end: snapshot.contentEnds[line - 1],
+              afterText: formatGitBlame(
+                ideGitBlameTemplate,
+                commit,
+                l10n: context.l10n,
+              ),
+              afterColor: colors['git.blame.editorDecorationForeground'],
+              afterMargin: ideGitBlameMargin,
+            ),
+    ];
+  }
+
+  /// The caret's line's blame after it, as the IDE's editor does.
+  List<EditorDecoration> _blameDecorations(
+    BuildContext context,
+    WorkbenchColors colors,
+  ) => _blameDecorationsOf(
+    context,
+    colors,
+    _blame,
+    _modified.document.snapshot,
+    {?_blameLine, ?_blameOnHover},
+  );
+
+  /// The pointer's line's blame after it, on the original side.
+  List<EditorDecoration> _originalBlameDecorations(
+    BuildContext context,
+    WorkbenchColors colors,
+  ) {
+    final document = _diff.controller?.document;
+    if (document == null) return const [];
+    return _blameDecorationsOf(
+      context,
+      colors,
+      _originalBlame,
+      document.snapshot,
+      [?_originalBlameOnHover],
+    );
+  }
+
+  /// The one-based line under [global], on the original side or the
+  /// modified, where it is over the text; null elsewhere.
+  int? _lineAt(Offset global, {bool original = false}) {
+    final view = original ? _originalView : _modifiedView;
+    final box = _boxOf(original ? _originalKey : _modifiedKey);
+    final document = original ? _diff.controller?.document : _modified.document;
+    final range = view?.visibleLineRange;
+    if (view == null || box == null || range == null || document == null) {
+      return null;
+    }
+    final snapshot = document.snapshot;
+    final local = box.globalToLocal(global);
+    final area = view.textArea;
+    if (area != null && local.dx < area.left) return null;
+    for (
+      var line = range.first;
+      line <= range.last && line <= snapshot.lineCount;
+      line++
+    ) {
+      final rect = view.lineRectAt(line);
+      if (rect != null && local.dy >= rect.top && local.dy < rect.bottom) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  /// [global] is on the blame past the hovered line's end, where the
+  /// editor paints it.
+  int? _blameLineAt(Offset global, {bool original = false}) {
+    final blame = original ? _originalBlame : _blame;
+    final line = original
+        ? _originalBlameOnHover
+        : (_blameOnHover ?? _blameLine);
+    final view = original ? _originalView : _modifiedView;
+    final box = _boxOf(original ? _originalKey : _modifiedKey);
+    final document = original ? _diff.controller?.document : _modified.document;
+    if (document == null) return null;
+    final snapshot = document.snapshot;
+    if (blame == null ||
+        line == null ||
+        view == null ||
+        box == null ||
+        line > snapshot.lineCount ||
+        blame.at(line) == null) {
+      return null;
+    }
+    final caret = view.caretRectAt(snapshot.contentEnds[line - 1]);
+    if (caret == null) return null;
+    final local = box.globalToLocal(global);
+    final start = caret.right + ideGitBlameMargin;
+    if (local.dy < caret.top ||
+        local.dy >= caret.bottom ||
+        local.dx < start - 8 ||
+        local.dx > start + 640) {
+      return null;
+    }
+    return line;
+  }
+
+  /// Whether [global] is over the original side.
+  bool _onOriginal(Offset global) {
+    final box = _boxOf(_originalKey);
+    if (box == null) return false;
+    return (box.localToGlobal(Offset.zero) & box.size).contains(global);
+  }
+
+  /// Whether [global] is on the card.
+  bool _onBlameCard(Offset global) {
+    final box = _blameCardKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return false;
+    return (box.localToGlobal(Offset.zero) & box.size).contains(global);
+  }
+
+  void _blameHovered(PointerHoverEvent event) {
+    final original = _onOriginal(event.position);
+    final blame = original ? _originalBlame : _blame;
+    final line = blame == null
+        ? null
+        : _lineAt(event.position, original: original);
+    if (line != null && blame!.at(line) != null) {
+      if (original ? _originalBlameOnHover != line : _blameOnHover != line) {
+        setState(() {
+          if (original) {
+            _originalBlameOnHover = line;
+            _blameOnHover = null;
+          } else {
+            _blameOnHover = line;
+            _originalBlameOnHover = null;
+          }
+        });
+      }
+      final hover = _blameHover;
+      if (hover != null && hover.original == original && hover.line == line) {
+        return;
+      }
+      _blameHoverTimer?.cancel();
+      _blameHoverTimer = Timer(ideHoverDelay, () {
+        if (!mounted) return;
+        setState(
+          () => _blameHover = (
+            original: original,
+            line: line,
+            at: event.position,
+          ),
+        );
+      });
+      return;
+    }
+    // On the blame past the line, or on the card to reach: kept.
+    if (_blameLineAt(event.position, original: original) != null ||
+        _onBlameCard(event.position)) {
+      _blameHoverTimer?.cancel();
+      return;
+    }
+    _hideBlameHoverSoon();
+  }
+
+  void _hideBlameHover() {
+    _blameHoverTimer?.cancel();
+    if (_blameHover == null &&
+        _blameOnHover == null &&
+        _originalBlameOnHover == null) {
+      return;
+    }
+    setState(() {
+      _blameHover = null;
+      _blameOnHover = null;
+      _originalBlameOnHover = null;
+    });
+  }
+
+  void _hideBlameHoverSoon() {
+    _blameHoverTimer?.cancel();
+    if (_blameHover == null &&
+        _blameOnHover == null &&
+        _originalBlameOnHover == null) {
+      return;
+    }
+    _blameHoverTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() {
+        _blameHover = null;
+        _blameOnHover = null;
+        _originalBlameOnHover = null;
+      });
+    });
+  }
+
+  /// The commit of the blame hovered, its card by the pointer.
+  Widget? _blameCard() {
+    final hover = _blameHover;
+    final blame = hover?.original == true ? _originalBlame : _blame;
+    if (hover == null || blame == null) return null;
+    final (:line, :at, original: _) = hover;
+    final commit = blame.at(line);
+    final box = context.findRenderObject();
+    if (commit == null || box is! RenderBox) return null;
+    final local = box.globalToLocal(at);
+    final width = math.min(460.0, math.max(240.0, box.size.width - 16));
+    final left = math.min(local.dx + 12, box.size.width - width - 8);
+    final below = local.dy < box.size.height - 220;
+    return Positioned(
+      left: math.max(8, left),
+      top: below ? local.dy + 12 : null,
+      bottom: below ? null : box.size.height - local.dy + 12,
+      child: IdeGitBlameCard(
+        key: _blameCardKey,
+        commit: commit,
+        width: width,
+        onCopy: () =>
+            unawaited(Clipboard.setData(ClipboardData(text: commit.hash))),
+        onOpenCommit: switch (widget.onShowCommit) {
+          final show? when !commit.uncommitted => () {
+            _hideBlameHover();
+            show(commit.hash);
+          },
+          _ => null,
+        },
+      ),
+    );
   }
 
   void _scrolled() => widget.onScrolled?.call(_diff.scroll.value);
@@ -662,7 +1038,7 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
     final style = IdeCodeDiff._style(_themes);
     final editable = widget.onEdit != null;
     final overlay = editable || widget.checks != null || widget.onAsk != null;
-    return DiffEditor(
+    final diff = DiffEditor(
       key: ObjectKey(_diff),
       model: _diff.model,
       style: style,
@@ -703,7 +1079,10 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
           caretColor: colors['editorCursor.foreground'],
           theme: theme,
           styledLines: _diff.textMate?.styledLines,
-          decorations: side.decorations,
+          decorations: [
+            ...side.decorations,
+            ..._originalBlameDecorations(context, colors),
+          ],
           viewZones: side.zones,
           scrollPosition: side.scrollPosition,
           lineNumbers: side.lineNumbers,
@@ -735,7 +1114,10 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
           caretColor: colors['editorCursor.foreground'],
           theme: theme,
           styledLines: _highlight?.styledLines,
-          decorations: side.decorations,
+          decorations: [
+            ...side.decorations,
+            ..._blameDecorations(context, colors),
+          ],
           viewZones: side.zones,
           scrollPosition: side.scrollPosition,
           // Side by side, the line numbers are by the split; inline, the
@@ -768,6 +1150,16 @@ class IdeCodeDiffState extends State<IdeCodeDiff> {
           style: style,
         );
       },
+    );
+    if (widget.git == null) return diff;
+    return MouseRegion(
+      onHover: _blameHovered,
+      onExit: (_) => _hideBlameHover(),
+      child: Stack(
+        fit: StackFit.passthrough,
+        clipBehavior: Clip.none,
+        children: [diff, ?_blameCard()],
+      ),
     );
   }
 
