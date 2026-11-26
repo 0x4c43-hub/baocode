@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:baocode/ide/terminal/terminal_zmodem.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,12 +18,14 @@ const _zhex = 0x42;
 const _zrqinit = 0;
 const _zrinit = 1;
 const _zfile = 4;
+const _zack = 3;
 const _zfin = 8;
 const _zrpos = 9;
 const _zdata = 10;
 const _zeof = 11;
 const _zcrce = 0x68;
 const _zcrCG = 0x69;
+const _zcrcQ = 0x6a;
 const _zcrcW = 0x6b;
 
 void main() {
@@ -130,6 +133,9 @@ class _UploadPeer {
     final restart = restarts[_nextRestart];
     if (_seen < restart.afterBytes) return;
     _nextRestart++;
+    // Like rz: once it asks for a position, what is in flight on the way is
+    // discarded until the sender's next header.
+    _expect = _Expect.header;
     session.feed(_hexHeader(_zrpos, _le32(restart.at)));
   }
 
@@ -174,11 +180,25 @@ class _UploadPeer {
     if (_expect == _Expect.data) {
       content.addAll(subpacket.payload);
       _seen += subpacket.payload.length;
-      if (subpacket.frameEnd == _zcrce) _expect = _Expect.header;
+      switch (subpacket.frameEnd) {
+        case _zcrce:
+          _expect = _Expect.header;
+        case _zcrcW || _zcrcQ:
+          // Like rz: a frame's end is answered on a later turn of the event
+          // loop, as bytes from a pty do, and what follows begins with a
+          // header again.
+          _expect = _Expect.header;
+          Future<void>.delayed(Duration.zero, () {
+            _session?.feed(_hexHeader(_zack, _le32(content.length)));
+          });
+      }
     } else {
       _expect = _Expect.header;
-      // Like rz: ask for the file once its info arrives.
-      _session?.feed(_hexHeader(_zrpos, _le32(0)));
+      // Like rz: ask for the file once its info arrives, on a later turn of
+      // the event loop, as bytes from a pty do.
+      Future<void>.delayed(Duration.zero, () {
+        _session?.feed(_hexHeader(_zrpos, _le32(0)));
+      });
     }
     return true;
   }
@@ -279,7 +299,9 @@ _Header? _readHeader(List<int> input) {
     if (input.length < 18) return null;
     final values = <int>[];
     for (var index = 4; index < 18; index += 2) {
-      values.add((_hexValue(input[index])! << 4) | _hexValue(input[index + 1])!);
+      values.add(
+        (_hexValue(input[index])! << 4) | _hexValue(input[index + 1])!,
+      );
     }
     var end = 18;
     while (end < input.length &&
@@ -308,10 +330,17 @@ _Header? _readHeader(List<int> input) {
     input.removeRange(0, index);
     return _Header(values.first, values.sublist(1, 5));
   }
-  throw StateError('unexpected bytes: ${input.take(8).toList()}');
+  // Not a header: like rz, hunt for the next ZPAD.
+  input.removeAt(0);
+  return null;
 }
 
 _Subpacket? _readSubpacket(List<int> input) {
+  // What a frame's end leaves behind: the XON after ZCRCW, say.
+  while (input.isNotEmpty &&
+      (input.first == 0x0d || input.first == 0x0a || input.first == 0x11)) {
+    input.removeAt(0);
+  }
   var end = -1;
   var frameEnd = 0;
   for (var index = 0; index + 1 < input.length; index++) {

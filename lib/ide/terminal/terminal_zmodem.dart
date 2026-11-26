@@ -90,6 +90,8 @@ class ZmodemSession {
 
   final ZmodemLimits limits;
 
+  void _log(String message) => zmodemLog(message);
+
   bool _active = true;
   bool get active => _active;
 
@@ -164,8 +166,21 @@ class ZmodemSession {
   // data is going out only records where to resume; the running loop picks
   // it up at the next chunk boundary.
   Future<void>? _uploadLoop;
+  bool _uploadRunning = false;
+  int _sentChunks = 0;
   int? _uploadRestart;
   int _uploadGeneration = 0;
+
+  /// What a frame's end waits for: the receiver's acknowledgement. A whole
+  /// file handed over at once runs ahead of what the other end reads
+  /// (through a pty, a server, a network), and a transfer that outruns it
+  /// is buffered nowhere anyone can see; each frame waits for its
+  /// [Completer] before the next, so the receiver sets the pace.
+  Completer<void>? _ack;
+  int _frameBytes = 0;
+
+  /// How much of a file goes before waiting for an acknowledgement.
+  int get _frameSize => limits.sendChunk * 8;
 
   // The receiver's ZRINIT asked for control characters to be escaped.
   bool _escapeCtl = false;
@@ -201,6 +216,10 @@ class ZmodemSession {
   /// away).
   void dispose() {
     if (!_active) return;
+    // The other end is still in raw mode, waiting for a transfer that will
+    // never continue: tell it this is over before the terminal goes.
+    _sendHeader(_zabort);
+    send(Uint8List.fromList(const [0x18, 0x18, 0x18, 0x18, 0x18]));
     _active = false;
     _idle?.cancel();
     unawaited(_closeDownload(delete: true));
@@ -222,7 +241,13 @@ class ZmodemSession {
 
   void _finish({String? error}) {
     if (!_active) return;
+    _log(
+      'finish error=$error transferred=$_transferred/$_total '
+      'files=$_finishedFiles',
+    );
+    if (error != null) _abortPeer();
     _active = false;
+    _acknowledged();
     _error = error;
     _idle?.cancel();
     _idle = null;
@@ -230,6 +255,17 @@ class ZmodemSession {
     unawaited(_closeUpload());
     onChanged();
     onDone?.call();
+  }
+
+  /// Tells the other end this is over, so that it leaves raw mode and gives
+  /// the terminal back instead of waiting for a sender that is gone.
+  void _abortPeer() {
+    try {
+      _sendHeader(_zabort);
+      send(Uint8List.fromList(const [0x18, 0x18, 0x18, 0x18, 0x18]));
+    } on Object {
+      // Whatever is left of the terminal's end.
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -267,7 +303,10 @@ class ZmodemSession {
         final keep = _partialHeaderAtEnd(_buffer);
         final garbage = _buffer.sublist(0, _buffer.length - keep);
         _buffer = _buffer.sublist(_buffer.length - keep);
-        if (garbage.isNotEmpty) writeOutput(Uint8List.fromList(garbage));
+        if (garbage.isNotEmpty) {
+          _log('output ${garbage.length} bytes: ${garbage.take(64).toList()}');
+          writeOutput(Uint8List.fromList(garbage));
+        }
         return null;
       }
       if (at > 0) {
@@ -395,6 +434,10 @@ class ZmodemSession {
   // Frames
 
   void _handleHeader(_ZHeader header) {
+    _log(
+      'header ${header.type} offset=${header.offset} '
+      'data=${header.data} phase=$_sendPhase direction=$_direction',
+    );
     switch (header.type) {
       case _zrqinit:
         _direction ??= ZmodemDirection.download;
@@ -403,6 +446,7 @@ class ZmodemSession {
       case _zrinit:
         _direction ??= ZmodemDirection.upload;
         _escapeCtl = (header.data[3] & 0x40) != 0;
+        _acknowledged();
         if (_direction == ZmodemDirection.upload) _receiverReady();
         break;
       case _zsinit:
@@ -410,7 +454,13 @@ class ZmodemSession {
         _expect = _SubpacketExpectation.zsinit;
         break;
       case _zack:
-        // An acknowledgement; nothing to do.
+        // The frame just sent is had: the next may go. An offset short of
+        // what was sent means some of it was not: start again there.
+        if (_direction == ZmodemDirection.upload &&
+            header.offset < _transferred) {
+          _uploadRestart = header.offset;
+        }
+        _acknowledged();
         break;
       case _zfile:
         _direction ??= ZmodemDirection.download;
@@ -418,15 +468,18 @@ class ZmodemSession {
         _expect = _SubpacketExpectation.fileInfo;
         break;
       case _zskip:
+        _acknowledged();
         if (_direction == ZmodemDirection.upload) _nextUploadFile();
         break;
       case _znak:
         // Whoever asked is retrying; the sender's next header restarts it.
         break;
       case _zabort:
+        _acknowledged();
         _finish(error: 'aborted by the other end');
         break;
       case _zfin:
+        _acknowledged();
         if (_direction == ZmodemDirection.download) {
           if (!_gotFin) {
             _gotFin = true;
@@ -442,6 +495,7 @@ class ZmodemSession {
         }
         break;
       case _zrpos:
+        _acknowledged();
         if (_direction == ZmodemDirection.upload) {
           _requestUploadData(header.offset);
         }
@@ -635,7 +689,6 @@ class ZmodemSession {
         _notify();
         unawaited(_chooseFiles());
       case _SendPhase.waitZrinit:
-        _finishedFiles++;
         _nextUploadFile();
       case _SendPhase.fin:
         break;
@@ -649,9 +702,11 @@ class ZmodemSession {
     try {
       files = await pickFiles();
     } on Object catch (error) {
+      _log('pickFiles failed: $error');
       _finish(error: 'could not ask for files: $error');
       return;
     }
+    _log('picked ${files.length} file(s): $files');
     if (!_active) return;
     if (files.isEmpty) {
       _waitingForUser = false;
@@ -696,6 +751,16 @@ class ZmodemSession {
   }
 
   Future<void> _offerUpload(String path) async {
+    _log('offer $path');
+    if (FileSystemEntity.isDirectorySync(path)) {
+      // A macOS app bundle is a folder as much as any other.
+      _finish(
+        error:
+            'ZMODEM sends one file: $path is a folder. Pack it first '
+            '(an .app, say: ditto -c -k --keepParent) and send the archive.',
+      );
+      return;
+    }
     try {
       final file = File(path);
       final size = await file.length();
@@ -708,6 +773,7 @@ class ZmodemSession {
       _upload = raf;
       _uploadSize = size;
       _total = size;
+      _log('offering $path size=$size');
       _sendPhase = _SendPhase.waitZrpos;
       final name = p.basename(path);
       final info = utf8.encode(
@@ -726,13 +792,31 @@ class ZmodemSession {
     }
   }
 
-  bool _isSending(int generation) =>
-      _active && generation == _uploadGeneration;
+  bool _isSending(int generation) => _active && generation == _uploadGeneration;
 
   void _startUploadLoop() {
-    if (!_active || _upload == null || _uploadLoop != null) return;
+    if (!_active || _upload == null || _uploadRunning) return;
+    _uploadRunning = true;
     final generation = _uploadGeneration;
     _uploadLoop = _runUpload(generation);
+  }
+
+  /// The receiver answered: a frame's end may send the next.
+  void _acknowledged() {
+    final ack = _ack;
+    _ack = null;
+    if (ack != null && !ack.isCompleted) ack.complete();
+  }
+
+  /// Waits for the acknowledgement of the frame just sent; false once this
+  /// send is over (the transfer ended, or the receiver moved the position
+  /// and the loop is to start again where it asked).
+  Future<bool> _awaitAck(int generation) async {
+    final ack = _ack ??= Completer<void>();
+    _resetIdle();
+    await ack.future;
+    if (!_isSending(generation)) return false;
+    return _uploadRestart == null;
   }
 
   void _requestUploadData(int offset) {
@@ -749,7 +833,7 @@ class ZmodemSession {
         await _sendUploadData(generation, offset);
       }
     } finally {
-      if (generation == _uploadGeneration) _uploadLoop = null;
+      if (generation == _uploadGeneration) _uploadRunning = false;
     }
   }
 
@@ -765,6 +849,7 @@ class ZmodemSession {
       await file.setPosition(start);
       if (!_isSending(generation)) return;
       var offset = start;
+      _frameBytes = 0;
       _transferred = offset;
       _notify();
       var first = true;
@@ -777,24 +862,47 @@ class ZmodemSession {
       while (remaining > 0) {
         if (!_isSending(generation)) return;
         if (_uploadRestart != null) {
-          // The receiver moved the position. End the current frame so its
-          // parser is looking for headers again, then restart from there.
-          if (!first) _sendSubpacket(const [], _zcrce);
+          // The receiver moved the position: it is looking for a header
+          // again, and the next frame starts with one there.
           return;
         }
         final chunk = await file.read(math.min(limits.sendChunk, remaining));
         if (!_isSending(generation)) return;
         if (chunk.isEmpty) break;
+        if (_sentChunks < 8) {
+          _sentChunks++;
+          _log(
+            'send chunk offset=$offset length=${chunk.length} '
+            'first=$first restart=$_uploadRestart',
+          );
+        }
         if (first) {
           _sendHeader(_zdata, data: _le32(offset), binary: true);
           first = false;
         }
         remaining -= chunk.length;
         offset += chunk.length;
-        _sendSubpacket(chunk, remaining == 0 ? _zcrce : _zcrCG);
+        _frameBytes += chunk.length;
+        final waits = remaining > 0 && _frameBytes >= _frameSize;
+        if (waits) {
+          // Set before sending: its answer may be at hand.
+          _ack ??= Completer<void>();
+          _frameBytes = 0;
+        }
+        _sendSubpacket(
+          chunk,
+          remaining == 0 ? _zcrce : (waits ? _zcrcW : _zcrCG),
+        );
         _transferred = offset;
         _notify();
         _resetIdle();
+        if (waits) {
+          final continues = await _awaitAck(generation);
+          if (!continues) return;
+          // A frame's end closes the frame: what follows is a new one,
+          // which starts with its own ZDATA header at where it now is.
+          first = true;
+        }
         // Let the event loop run (and the screen redraw) on big files.
         if (offset % (limits.sendChunk * 8) == 0) {
           await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -805,6 +913,9 @@ class ZmodemSession {
       // immediately must be understood as ready for the next file.
       _sendPhase = _SendPhase.waitZrinit;
       _sendHeader(_zeof, data: _le32(offset));
+      // ZEOF ends the file; a receiver may answer with ZRINIT (send the next
+      // one) or go straight to ZFIN (done), and both mean this one is sent.
+      _finishedFiles++;
       _resetIdle();
     } on Object catch (error) {
       if (!_isSending(generation)) return;
@@ -832,6 +943,7 @@ class ZmodemSession {
         // The loop reports its own failures.
       }
     }
+    _uploadRunning = false;
     if (identical(_uploadLoop, loop)) _uploadLoop = null;
     if (file == null) return;
     try {
@@ -853,10 +965,11 @@ class ZmodemSession {
     List<int> data = const [0, 0, 0, 0],
     bool binary = false,
   }) {
+    _log('send header $type data=$data binary=$binary phase=$_sendPhase');
     final values = [type, ...data];
     if (binary) {
       final crc = _crc16(values);
-      final bytes = _escape([...values, crc >> 8, crc & 0xff], 0);
+      final bytes = _escape([...values, crc >> 8, crc & 0xff]);
       send(Uint8List.fromList([_zpad, _zdle, _zbin, ...bytes]));
       return;
     }
@@ -884,16 +997,16 @@ class ZmodemSession {
     final crc = _crc16([...payload, frameEnd]);
     send(
       Uint8List.fromList([
-        ..._escape(payload, 0x00),
+        ..._escape(payload),
         _zdle,
         frameEnd,
-        ..._escape([crc >> 8, crc & 0xff], frameEnd),
+        ..._escape([crc >> 8, crc & 0xff]),
         if (frameEnd == _zcrcW) 0x11,
       ]),
     );
   }
 
-  List<int> _escape(List<int> bytes, int previous) {
+  List<int> _escape(List<int> bytes) {
     final result = <int>[];
     for (final byte in bytes) {
       final escape =
@@ -906,8 +1019,6 @@ class ZmodemSession {
           byte == 0x93 ||
           byte == 0x0d ||
           byte == 0x8d ||
-          ((byte == 0x40 || byte == 0xc0) &&
-              (previous == 0x40 || previous == 0xc0)) ||
           (_escapeCtl && (byte & 0x60) == 0);
       if (escape) {
         result
@@ -916,7 +1027,6 @@ class ZmodemSession {
       } else {
         result.add(byte);
       }
-      previous = byte;
     }
     return result;
   }
@@ -1025,6 +1135,24 @@ int? _findHeader(Uint8List bytes) {
 
 /// Where a hex header that can start a session begins in [bytes]: `**` then
 /// ZDLE then ZHEX, with its frame type.
+final String? _logFile = Platform.environment['BAOCODE_ZMODEM_LOG'];
+
+/// Appends [message] to the file in `BAOCODE_ZMODEM_LOG`, when it is set: a
+/// transfer's protocol, for when one misbehaves.
+void zmodemLog(String message) {
+  final path = _logFile;
+  if (path == null) return;
+  try {
+    File(path).writeAsStringSync(
+      '${DateTime.now().toIso8601String()} $message\n',
+      mode: FileMode.append,
+      flush: true,
+    );
+  } on Object {
+    // Diagnostics must never break a transfer.
+  }
+}
+
 int? findZmodemStart(Uint8List bytes) {
   for (var index = 0; index + 6 <= bytes.length; index++) {
     if (bytes[index] != _zpad ||

@@ -788,6 +788,7 @@ class TerminalInstance extends ChangeNotifier {
     }
     _writeTerminal(bytes.sublist(0, start));
     _zmodemScanTail = Uint8List(0);
+    zmodemLog('session starts at $start of ${bytes.length} bytes');
     final started = ZmodemSession(
       send: _sendZmodem,
       writeOutput: _writeTerminal,
@@ -831,6 +832,11 @@ class TerminalInstance extends ChangeNotifier {
       _zmodem = null;
       notifyListeners();
       final error = session.error;
+      zmodemLog(
+        'session ended error=$error rest=${rest.length} '
+        'transferred=${session.transferred}/${session.total} '
+        'files=${session.finishedFiles}',
+      );
       if (error != null) {
         _writeOwnText(
           formatMessageForTerminal(

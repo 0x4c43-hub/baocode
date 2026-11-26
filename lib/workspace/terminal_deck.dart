@@ -24,6 +24,7 @@ import '../ide/terminal/terminal_service.dart';
 import '../ide/terminal/terminal_tabs.dart';
 import '../ide/terminal/terminal_tasks.dart';
 import '../ide/terminal/terminal_view.dart';
+import '../ide/terminal/terminal_zmodem_banner.dart';
 import '../keybindings/keybinding_service.dart';
 import '../kernel/kernel_types.dart';
 import '../l10n/l10n.dart';
@@ -462,15 +463,18 @@ class _TerminalDeckState extends State<TerminalDeck> {
       case final TerminalInstance shell:
         // Live in both places: the one that has it as its view, the other
         // a mirror until pressed.
-        return TerminalView(
-          shell,
-          key: ObjectKey(shell),
-          mirror: !here,
-          onActivate: () => widget.hosts.claim(shell, widget.place),
-          skipShell: widget.skipShell,
-          onKill: () => terminals!.kill(shell),
-          onOpenLink: widget.onOpenLink,
-          background: TerminalDeck.background,
+        return ZmodemOverlay(
+          shell: shell,
+          child: TerminalView(
+            shell,
+            key: ObjectKey(shell),
+            mirror: !here,
+            onActivate: () => widget.hosts.claim(shell, widget.place),
+            skipShell: widget.skipShell,
+            onKill: () => terminals!.kill(shell),
+            onOpenLink: widget.onOpenLink,
+            background: TerminalDeck.background,
+          ),
         );
       case final String id:
         final task = tasks.firstWhere((task) => task.id == id);
