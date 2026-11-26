@@ -255,33 +255,35 @@ if [ "$CARRY_REMOTE" = 0 ]; then
     read -r remembered_version remembered_protocol <"$remembered" || true
   fi
   published_version=""
+  # A version upstream tags is not served until its artifacts are published:
+  # fetch_remote_server takes servers.json and checks every file is there
+  # before the version is trusted, so a tag without its builds is skipped.
   for candidate in \
     "$(version_in /Applications/BaoCode.app/Contents/Resources/remote/VERSION)" \
     "$(version_in build/remote-release/VERSION)" \
     "$(version_in "$remembered")"; do
-    if [ -n "$candidate" ] && [ "${candidate%%-*}" = "$wanted" ]; then
+    [ -n "$candidate" ] || continue
+    [ "${candidate%%-*}" = "$wanted" ] || continue
+    if dart run tool/fetch_remote_server.dart "$candidate" \
+      --out build/remote-release >/dev/null 2>&1; then
       published_version="$candidate"
       break
     fi
+    echo "  Remote server: $candidate is not served; not reused" >&2
   done
   # None names this release: ask what is published now (a release published
-  # after this app's own builds, say), rather than carrying for nothing.
+  # after this app's own builds, say), rather than carrying for nothing. A
+  # server of another release is taken while it speaks this build's protocol.
   if [ -z "$published_version" ]; then
     echo "  Remote server: asking dl.baocode.dev for the newest published"
     if dart run tool/fetch_remote_server.dart latest \
       --out build/remote-release >/dev/null 2>&1; then
       candidate="$(version_in build/remote-release/VERSION)"
-      if [ -n "$candidate" ] && [ "${candidate%%-*}" = "$wanted" ]; then
+      if [ -n "$candidate" ] && [ -n "$protocol" ] &&
+        [ "$(protocol_of "${candidate##*-}")" = "$protocol" ]; then
         published_version="$candidate"
       fi
     fi
-  fi
-  if [ -n "$published_version" ] &&
-    [ -n "$remembered_protocol" ] && [ -n "$protocol" ] &&
-    [ "$remembered_protocol" != "$protocol" ]; then
-    echo "  $remembered_version's server speaks protocol" \
-      "$remembered_protocol, this build $protocol: not reused"
-    published_version=""
   fi
   if [ -n "$published_version" ]; then
     echo "  Remote server: reusing $published_version"
