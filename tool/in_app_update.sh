@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
 # Runs the custom build's update for the app: merges what changed upstream,
-# tests it and builds, then waits for the app to quit, puts the new build in
+# builds, then waits for the app to quit, puts the new build in
 # place, and opens it again. Settings → Updates starts it (lib/update/
 # source_update_controller.dart), and reads its log as it goes.
 #
-#   tool/in_app_update.sh <app pid> [--no-tests]
+#   tool/in_app_update.sh <app pid>
 #
 # Written for that caller: no terminal, so everything goes to the log, and
 # the app's markers ("==> Ready", "==> Failed") are what it reads back.
@@ -30,14 +30,10 @@ fail() {
 
 say "Update for pid $pid, from $ROOT"
 
-tests=()
-for argument in "$@"; do
-  case "$argument" in
-    --no-tests) tests+=(--no-tests) ;;
-  esac
-done
-
-if ! "$ROOT/tool/sync_custom.sh" --build-only ${tests[@]+"${tests[@]}"}; then
+# The version this takes is upstream's, merged here: this is the one path
+# that changes it. The test suite is the one run by hand before pushing;
+# it takes a quarter of an hour, and an update waits for the build.
+if ! "$ROOT/tool/sync_custom.sh" --build-only --merge-upstream; then
   fail "the build did not finish (see above)"
 fi
 

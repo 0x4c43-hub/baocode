@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# BaoCode 2: take what changed upstream, test it, build the app, and put it
-# in /Applications/BaoCode 2.app.
+# BaoCode 2: build this checkout and put the app in
+# /Applications/BaoCode 2.app; --merge-upstream takes what changed first.
 #
-#   tool/sync_custom.sh                 merge upstream, test, build, install
-#   tool/sync_custom.sh --no-tests      skip the test suite
+#   tool/sync_custom.sh                 build this checkout as it is
+#   tool/sync_custom.sh --merge-upstream  take what upstream has first
+#   tool/sync_custom.sh --tests         run the whole test suite first
 #   tool/sync_custom.sh --build-only    build and package, do not install
 #   tool/sync_custom.sh --stash         stash uncommitted changes while merging
 #   tool/sync_custom.sh --force         rebuild even when upstream is unchanged
@@ -15,7 +16,8 @@
 #                                       nothing else (tool/in_app_update.sh)
 #
 # The merge is a normal merge, not a rebase: the branch may already be
-# pushed. A conflict stops before anything is built or installed.
+# pushed. A conflict stops before anything is built or installed. Only the
+# app's update merges: a build by hand keeps the version it is on.
 
 set -euo pipefail
 
@@ -40,20 +42,23 @@ BACKUP_DIR="${BAOCODE2_BACKUP_DIR:-/private/tmp}"
 BUNDLE_ID="dev.baocode.desktop.baocode2"
 
 INSTALL=1
-RUN_TESTS=1
+RUN_TESTS=0
 STASH=0
 FORCE=0
 CARRY_REMOTE=0
 INSTALL_ONLY=0
+MERGE_UPSTREAM=0
 
 usage() {
-  sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 for argument in "$@"; do
   case "$argument" in
     --no-install|--build-only) INSTALL=0 ;;
     --no-tests) RUN_TESTS=0 ;;
+    --tests) RUN_TESTS=1 ;;
+    --merge-upstream) MERGE_UPSTREAM=1 ;;
     --stash) STASH=1 ;;
     --force) FORCE=1 ;;
     --carry-remote) CARRY_REMOTE=1 ;;
@@ -159,62 +164,69 @@ if [ "$INSTALL_ONLY" = 1 ]; then
   exit 0
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
-  if [ "$STASH" = 1 ]; then
-    stamp="$(date +%Y%m%d-%H%M%S)"
-    git stash push --include-untracked --message "baocode2-sync-$stamp"
-    STASHED=1
-    restore_stash() {
-      if [ "${STASHED:-0}" = 1 ] && git stash pop; then
-        STASHED=0
-      fi
-    }
-  else
-    echo "The working tree has uncommitted changes:" >&2
-    git status --short >&2
+restore_stash() { :; }
+
+# The version this build has is the one in pubspec.yaml: a build by hand
+# changes nothing. Taking what upstream has — and with it a new version —
+# is the app's own update (tool/in_app_update.sh), which asks for it.
+if [ "$MERGE_UPSTREAM" = 1 ]; then
+  if [ -n "$(git status --porcelain)" ]; then
+    if [ "$STASH" = 1 ]; then
+      stamp="$(date +%Y%m%d-%H%M%S)"
+      git stash push --include-untracked --message "baocode2-sync-$stamp"
+      STASHED=1
+      restore_stash() {
+        if [ "${STASHED:-0}" = 1 ] && git stash pop; then
+          STASHED=0
+        fi
+      }
+    else
+      echo "The working tree has uncommitted changes:" >&2
+      git status --short >&2
+      echo "" >&2
+      echo "Commit them, or run with --stash to carry them across the merge." >&2
+      exit 2
+    fi
+  fi
+
+  trap 'if [ "${STASHED:-0}" = 1 ]; then echo "Your changes are still in \`git stash list\`." >&2; fi' EXIT
+
+  echo "==> Fetching upstream ($UPSTREAM_URL $UPSTREAM_BRANCH)"
+  git fetch --no-tags "$UPSTREAM_URL" "$UPSTREAM_BRANCH"
+  upstream="$(git rev-parse FETCH_HEAD)"
+
+  if [ "$FORCE" = 0 ] && git merge-base --is-ancestor "$upstream" HEAD; then
+    echo "Upstream has nothing new. Use --force to rebuild anyway."
+    restore_stash
+    STASHED=0
+    exit 0
+  fi
+
+  echo "==> Merging upstream into $(git branch --show-current)"
+  # A fork that never took the upstream's history (unrelated roots) is merged
+  # once; after that the two share it.
+  merge_flags=(--no-edit)
+  if ! git merge-base HEAD "$upstream" >/dev/null 2>&1; then
+    merge_flags+=(--allow-unrelated-histories)
+  fi
+  if ! git merge "${merge_flags[@]}" "$upstream"; then
+    git merge --abort || true
     echo "" >&2
-    echo "Commit them, or run with --stash to carry them across the merge." >&2
-    exit 2
+    echo "Upstream conflicts with the local changes; nothing was built." >&2
+    echo "Resolve the conflict by hand, then run this script again." >&2
+    restore_stash
+    STASHED=0
+    exit 3
+  fi
+
+  restore_stash
+  if [ "${STASHED:-0}" = 1 ]; then
+    echo "The merge is done, but restoring your changes conflicted." >&2
+    echo "Resolve it by hand; they are still in \`git stash list\`." >&2
+    exit 4
   fi
 else
-  restore_stash() { :; }
-fi
-
-trap 'if [ "${STASHED:-0}" = 1 ]; then echo "Your changes are still in \`git stash list\`." >&2; fi' EXIT
-
-echo "==> Fetching upstream ($UPSTREAM_URL $UPSTREAM_BRANCH)"
-git fetch --no-tags "$UPSTREAM_URL" "$UPSTREAM_BRANCH"
-upstream="$(git rev-parse FETCH_HEAD)"
-
-if [ "$FORCE" = 0 ] && git merge-base --is-ancestor "$upstream" HEAD; then
-  echo "Upstream has nothing new. Use --force to rebuild anyway."
-  restore_stash
-  STASHED=0
-  exit 0
-fi
-
-echo "==> Merging upstream into $(git branch --show-current)"
-# A fork that never took the upstream's history (unrelated roots) is merged
-# once; after that the two share it.
-merge_flags=(--no-edit)
-if ! git merge-base HEAD "$upstream" >/dev/null 2>&1; then
-  merge_flags+=(--allow-unrelated-histories)
-fi
-if ! git merge "${merge_flags[@]}" "$upstream"; then
-  git merge --abort || true
-  echo "" >&2
-  echo "Upstream conflicts with the local changes; nothing was built." >&2
-  echo "Resolve the conflict by hand, then run this script again." >&2
-  restore_stash
-  STASHED=0
-  exit 3
-fi
-
-restore_stash
-if [ "${STASHED:-0}" = 1 ]; then
-  echo "The merge is done, but restoring your changes conflicted." >&2
-  echo "Resolve it by hand; they are still in \`git stash list\`." >&2
-  exit 4
+  echo "==> Building this checkout as it is (no upstream merge)"
 fi
 
 if [ "$RUN_TESTS" = 1 ]; then
