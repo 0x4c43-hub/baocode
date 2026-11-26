@@ -7,7 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../theme/codicons.dart';
 import 'terminal_instance.dart';
 import 'terminal_zmodem.dart';
@@ -98,13 +98,13 @@ class _ZmodemBannerState extends State<ZmodemBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
+    final custom = context.custom;
     final theme = Theme.of(context);
     final waiting = session.waitingForUser;
     final receiving = session.direction != ZmodemDirection.upload;
     final title = waiting
-        ? (receiving ? l10n.zmodemChooseSave : l10n.zmodemChooseFiles)
-        : (receiving ? l10n.zmodemReceiving : l10n.zmodemSending);
+        ? (receiving ? custom.zmodemChooseSave : custom.zmodemChooseFiles)
+        : (receiving ? custom.zmodemReceiving : custom.zmodemSending);
     final total = session.total;
     final progress = total > 0
         ? (session.transferred / total).clamp(0.0, 1.0)
@@ -173,7 +173,7 @@ class _ZmodemBannerState extends State<ZmodemBanner> {
             const SizedBox(width: 6),
             IconButton(
               icon: const Icon(Codicons.close, size: 14),
-              tooltip: l10n.zmodemCancel,
+              tooltip: custom.zmodemCancel,
               visualDensity: VisualDensity.compact,
               onPressed: widget.onCancel,
             ),

@@ -7,6 +7,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import 'header_menu.dart';
 
 /// What the Git menu can do, supplied by the workbench or the Source
@@ -63,14 +64,18 @@ class GitMenuActions {
 }
 
 /// The Git menu's entries, grouped with rules between them.
-List<HeaderMenuItem> gitMenuItems(AppLocalizations l10n, GitMenuActions a) {
+List<HeaderMenuItem> gitMenuItems(
+  AppLocalizations l10n,
+  CustomStrings custom,
+  GitMenuActions a,
+) {
   HeaderMenuItem item(String label, VoidCallback? run) =>
       HeaderMenuItem(label, onSelected: run ?? () {});
   HeaderMenuItem submenu(String label, List<HeaderMenuItem> entries) =>
       HeaderMenuItem(label, onSelected: () {}, submenu: entries);
 
   final pullPush = <HeaderMenuItem>[
-    if (a.updateProject != null) item(l10n.gitMenuSync, a.updateProject),
+    if (a.updateProject != null) item(custom.gitMenuSync, a.updateProject),
     if (a.pull != null ||
         a.pullRebase != null ||
         a.pullFrom != null ||
@@ -84,57 +89,59 @@ List<HeaderMenuItem> gitMenuItems(AppLocalizations l10n, GitMenuActions a) {
         a.fetchAll != null)
       const HeaderMenuItem.rule(),
     if (a.pull != null) item(l10n.scmPull, a.pull),
-    if (a.pullRebase != null) item(l10n.gitMenuPullRebase, a.pullRebase),
-    if (a.pullFrom != null) item(l10n.gitMenuPullFrom, a.pullFrom),
+    if (a.pullRebase != null) item(custom.gitMenuPullRebase, a.pullRebase),
+    if (a.pullFrom != null) item(custom.gitMenuPullFrom, a.pullFrom),
     if (a.pull != null || a.pullRebase != null || a.pullFrom != null)
       const HeaderMenuItem.rule(),
     if (a.push != null) item(l10n.scmPush, a.push),
-    if (a.pushForce != null) item(l10n.gitMenuPushForce, a.pushForce),
-    if (a.pushTo != null) item(l10n.gitMenuPushTo, a.pushTo),
-    if (a.pushToForce != null) item(l10n.gitMenuPushToForce, a.pushToForce),
+    if (a.pushForce != null) item(custom.gitMenuPushForce, a.pushForce),
+    if (a.pushTo != null) item(custom.gitMenuPushTo, a.pushTo),
+    if (a.pushToForce != null) item(custom.gitMenuPushToForce, a.pushToForce),
     if (a.push != null ||
         a.pushForce != null ||
         a.pushTo != null ||
         a.pushToForce != null)
       const HeaderMenuItem.rule(),
     if (a.fetch != null) item(l10n.scmFetch, a.fetch),
-    if (a.fetchPrune != null) item(l10n.gitMenuFetchPrune, a.fetchPrune),
-    if (a.fetchDelete != null) item(l10n.gitMenuFetchDelete, a.fetchDelete),
-    if (a.fetchAll != null) item(l10n.gitMenuFetchAll, a.fetchAll),
+    if (a.fetchPrune != null) item(custom.gitMenuFetchPrune, a.fetchPrune),
+    if (a.fetchDelete != null) item(custom.gitMenuFetchDelete, a.fetchDelete),
+    if (a.fetchAll != null) item(custom.gitMenuFetchAll, a.fetchAll),
   ];
 
   return [
     if (a.pull != null) item(l10n.scmPull, a.pull),
     if (a.push != null) item(l10n.scmPush, a.push),
-    if (a.clone != null) item(l10n.gitMenuClone, a.clone),
-    if (a.checkout != null) item(l10n.gitMenuCheckout, a.checkout),
+    if (a.clone != null) item(custom.gitMenuClone, a.clone),
+    if (a.checkout != null) item(custom.gitMenuCheckout, a.checkout),
     if (a.fetch != null) item(l10n.scmFetch, a.fetch),
     if (a.clone != null || a.checkout != null || a.fetch != null)
       const HeaderMenuItem.rule(),
     if (a.commit != null || a.commitAndPush != null)
-      submenu(l10n.gitMenuCommit, [
-        if (a.commit != null) item(l10n.gitMenuCommitChanges, a.commit),
+      submenu(custom.gitMenuCommit, [
+        if (a.commit != null) item(custom.gitMenuCommitChanges, a.commit),
         if (a.commitAndPush != null)
           item(l10n.gitCommitAndPush, a.commitAndPush),
       ]),
     if (a.updateProject != null || a.stash != null)
-      submenu(l10n.gitMenuChanges, [
+      submenu(custom.gitMenuChanges, [
         if (a.updateProject != null)
-          item(l10n.gitMenuUpdateProject, a.updateProject),
-        if (a.stash != null) item(l10n.gitMenuStash, a.stash),
+          item(custom.gitMenuUpdateProject, a.updateProject),
+        if (a.stash != null) item(custom.gitMenuStash, a.stash),
       ]),
-    if (pullPush.isNotEmpty) submenu(l10n.gitMenuPullPush, pullPush),
+    if (pullPush.isNotEmpty) submenu(custom.gitMenuPullPush, pullPush),
     if (a.branch != null)
-      submenu(l10n.gitMenuBranches, [item(l10n.gitMenuBranches, a.branch)]),
+      submenu(custom.gitMenuBranches, [item(custom.gitMenuBranches, a.branch)]),
     if (a.remote != null)
-      submenu(l10n.gitMenuRemotes, [item(l10n.gitMenuRemotes, a.remote)]),
+      submenu(custom.gitMenuRemotes, [item(custom.gitMenuRemotes, a.remote)]),
     if (a.stash != null)
-      submenu(l10n.gitMenuStash, [item(l10n.gitMenuStash, a.stash)]),
+      submenu(custom.gitMenuStash, [item(custom.gitMenuStash, a.stash)]),
     if (a.tag != null)
-      submenu(l10n.gitMenuTags, [item(l10n.gitMenuTags, a.tag)]),
+      submenu(custom.gitMenuTags, [item(custom.gitMenuTags, a.tag)]),
     if (a.worktree != null)
-      submenu(l10n.gitMenuWorktree, [item(l10n.gitMenuWorktree, a.worktree)]),
+      submenu(custom.gitMenuWorktree, [
+        item(custom.gitMenuWorktree, a.worktree),
+      ]),
     const HeaderMenuItem.rule(),
-    if (a.showOutput != null) item(l10n.gitMenuShowOutput, a.showOutput),
+    if (a.showOutput != null) item(custom.gitMenuShowOutput, a.showOutput),
   ];
 }

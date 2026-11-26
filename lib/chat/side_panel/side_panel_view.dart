@@ -52,6 +52,7 @@ import '../chat_models.dart' show CommandStatus;
 import '../../keybindings/chat_keybindings.dart';
 import '../../keybindings/keybinding_service.dart';
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../sidebar/sidebar.dart' show SidebarIconButton;
 import '../../theme/app_theme.dart';
 import '../../theme/codicons.dart';
@@ -732,6 +733,7 @@ class AgentSidePanelView extends StatelessWidget {
   /// it or from the conversation.
   Widget _filesPage(BuildContext context, SidePanelTabs tabs) {
     final l10n = context.l10n;
+    final custom = context.custom;
     final root = session.root;
     final active = tabs.active;
     final explorer = root == null
@@ -817,7 +819,7 @@ class AgentSidePanelView extends StatelessWidget {
                   actions: [
                     IdePaneAction(
                       icon: Codicons.goToFile,
-                      tooltip: l10n.sidePanelFindFile,
+                      tooltip: custom.sidePanelFindFile,
                       onPressed: () {
                         panel.setSearchShown(explorer.root, false);
                         panel.setFileSearchShown(explorer.root, true);
@@ -2420,6 +2422,7 @@ class _FileQuickOpenState extends State<_FileQuickOpen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final custom = context.custom;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1),
@@ -2434,7 +2437,7 @@ class _FileQuickOpenState extends State<_FileQuickOpen> {
               controller: _controller,
               focusNode: _focus,
               autofocus: true,
-              placeholder: l10n.sidePanelFindFile,
+              placeholder: custom.sidePanelFindFile,
               onChanged: _changed,
               onSubmitted: (_) => _openSelected(),
               shortcuts: {

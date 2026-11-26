@@ -18,6 +18,7 @@ import '../../keybindings/default_keybindings.dart'
     show openSettingsCommandId, toggleAutoSaveCommandId;
 import '../../keybindings/window_keybindings.dart' show WindowCommandIds;
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../sidebar/sidebar.dart';
 import '../../theme/codicons.dart';
 import '../../theme/app_theme.dart';
@@ -777,6 +778,7 @@ class _WindowHeaderState extends State<WindowHeader> {
       ],
       HeaderMenu.git => gitMenuItems(
         l10n,
+        context.custom,
         widget.gitActions?.call() ?? const GitMenuActions(),
       ),
       HeaderMenu.help => [

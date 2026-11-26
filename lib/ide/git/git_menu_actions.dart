@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../workspace/window_header/git_menu.dart';
 import '../file_service.dart' show IdeFileService;
 import '../ide_dialog.dart';
@@ -33,7 +34,7 @@ GitMenuActions ideGitMenuActions({
 }) {
   final git = scm.git;
   if (git == null) return const GitMenuActions();
-  final l10n = context.l10n;
+  final custom = context.custom;
   final host = scm.host;
   final notifications = scm.workspace.notifications;
 
@@ -60,10 +61,10 @@ GitMenuActions ideGitMenuActions({
   Future<(String, String)?> pickRemoteAndBranch() async {
     final remotes = await git.service.remotes();
     if (remotes.isEmpty) {
-      notifications.notify(IdeSeverity.warning, l10n.gitMenuNoRemote);
+      notifications.notify(IdeSeverity.warning, custom.gitMenuNoRemote);
       return null;
     }
-    final remote = await pick(l10n.gitMenuPickRemote, remotes);
+    final remote = await pick(custom.gitMenuPickRemote, remotes);
     if (remote == null) return null;
     final refs = await git.service.refs();
     final branches = <String>{
@@ -74,7 +75,7 @@ GitMenuActions ideGitMenuActions({
               ? ref.name.substring(remote.length + 1)
               : ref.name,
     }.toList()..sort();
-    final branch = await pick(l10n.gitMenuPickBranch, branches);
+    final branch = await pick(custom.gitMenuPickBranch, branches);
     return branch == null ? null : (remote, branch);
   }
 
@@ -140,13 +141,16 @@ Future<void> ideGitShowOutput(
   BuildContext context,
   IdeGitRepository git,
 ) async {
+  final message = context.custom.gitMenuShowOutput;
+  final ok = context.l10n.commonOk;
   final output = await git.service.run(['status']);
+  if (!context.mounted) return;
   final text = '${output.stdout}${output.stderr}';
   await showIdeDialog(
     context,
-    message: context.l10n.gitMenuShowOutput,
+    message: message,
     detail: text.isEmpty ? '(no output)' : text,
-    buttons: [context.l10n.commonOk],
+    buttons: [ok],
     type: IdeDialogType.info,
   );
 }
@@ -187,8 +191,8 @@ Future<void> ideGitNewWorktree(
 ) async {
   final result = await showIdeInputDialog(
     context,
-    message: context.l10n.gitMenuWorktree,
-    buttons: [context.l10n.gitMenuNewWorktree],
+    message: context.custom.gitMenuWorktree,
+    buttons: [context.custom.gitMenuNewWorktree],
     inputs: [IdeDialogInput(placeholder: context.l10n.gitTagName)],
     type: IdeDialogType.question,
   );

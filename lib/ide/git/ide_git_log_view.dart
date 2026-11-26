@@ -22,6 +22,7 @@ import '../../base/smooth_scroll.dart';
 import '../../base/shown_when_ready.dart';
 import '../../chat/composer/composer_files.dart';
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/codicons.dart';
 import '../../theme/material_file_icons.dart';
@@ -1436,10 +1437,10 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
   /// A remote of [git], and a branch on it: picked from menus under the
   /// Git button, or the only remote without a choice.
   Future<(String, String)?> _pickRemoteAndBranch(IdeGitRepository git) async {
-    final l10n = context.l10n;
+    final custom = context.custom;
     final remotes = await git.service.remotes();
     if (remotes.isEmpty) {
-      widget.notifications.notify(IdeSeverity.warning, l10n.gitMenuNoRemote);
+      widget.notifications.notify(IdeSeverity.warning, custom.gitMenuNoRemote);
       return null;
     }
     final remote = remotes.length == 1
@@ -1456,7 +1457,7 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
               : ref.name,
     }.toList()..sort();
     if (branches.isEmpty) {
-      widget.notifications.notify(IdeSeverity.warning, l10n.gitMenuNoRemote);
+      widget.notifications.notify(IdeSeverity.warning, custom.gitMenuNoRemote);
       return null;
     }
     final branch = await _chooseUnderGitMenu(branches);
@@ -1761,6 +1762,7 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
     required bool compact,
   }) {
     final l10n = context.l10n;
+    final custom = context.custom;
     final head = state.head;
     final pullLabel = head.behind > 0
         ? '${l10n.scmPull} (${head.behind})'
@@ -1818,11 +1820,11 @@ class IdeGitLogViewState extends State<IdeGitLogView> {
         key: _gitMenuButton,
         child: _DropButton(
           icon: Codicons.sourceControl,
-          label: l10n.menuGit,
-          tooltip: l10n.menuGit,
+          label: custom.menuGit,
+          tooltip: custom.menuGit,
           maxWidth: 60,
           entries: () =>
-              _gitMenuEntries(gitMenuItems(l10n, _gitMenuActions(git))),
+              _gitMenuEntries(gitMenuItems(l10n, custom, _gitMenuActions(git))),
         ),
       ),
       IdeMenuButton(

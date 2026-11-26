@@ -1435,9 +1435,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuView => 'View';
 
   @override
-  String get menuGit => 'Git';
-
-  @override
   String get menuHelp => 'Help';
 
   @override
@@ -1797,9 +1794,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sidePanelSearchFiles => 'Search the project\'s files';
-
-  @override
-  String get sidePanelFindFile => 'Search files by name';
 
   @override
   String get sidePanelCloseSearch => 'Close the search';
@@ -7713,42 +7707,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get updateUnsupported =>
       'This build of BaoCode doesn\'t update itself.';
-
-  @override
-  String get sourceUpdateTitle => 'Source updates';
-
-  @override
-  String get sourceUpdatePageDescription =>
-      'BaoCode 2 updates from its sources: a version upstream publishes is built here, then installed.';
-
-  @override
-  String sourceUpdateUpToDate(String version) {
-    return '$version is the newest: upstream publishes nothing newer.';
-  }
-
-  @override
-  String sourceUpdateAvailable(String version) {
-    return 'Upstream publishes $version; it can be built in the background.';
-  }
-
-  @override
-  String get sourceUpdateBuilding =>
-      'Merging, testing and building; BaoCode 2 installs it once it quits.';
-
-  @override
-  String get sourceUpdateReady =>
-      'The new version is built. It installs when BaoCode 2 quits, and opens again.';
-
-  @override
-  String sourceUpdateFailed(String error) {
-    return 'The update did not finish: $error';
-  }
-
-  @override
-  String get sourceUpdateUpdateNow => 'Update Now';
-
-  @override
-  String get sourceUpdateLog => 'Show Log';
 
   @override
   String updateManual(String reason) {
@@ -14662,97 +14620,4 @@ class AppLocalizationsEn extends AppLocalizations {
   String remoteBrowserReplace(String name) {
     return '“$name” already exists. Replace it?';
   }
-
-  @override
-  String get gitMenuSync => 'Sync';
-
-  @override
-  String get gitMenuClone => 'Clone';
-
-  @override
-  String get gitMenuCheckout => 'Checkout to…';
-
-  @override
-  String get gitMenuCommit => 'Commit';
-
-  @override
-  String get gitMenuCommitChanges => 'Commit Changes…';
-
-  @override
-  String get gitMenuChanges => 'Changes';
-
-  @override
-  String get gitMenuUpdateProject => 'Update Project';
-
-  @override
-  String get gitMenuPullPush => 'Pull, Push';
-
-  @override
-  String get gitMenuPullRebase => 'Pull (Rebase)';
-
-  @override
-  String get gitMenuPullFrom => 'Pull from…';
-
-  @override
-  String get gitMenuPushForce => 'Push (Force)';
-
-  @override
-  String get gitMenuPushTo => 'Push to…';
-
-  @override
-  String get gitMenuPushToForce => 'Push to… (Force)';
-
-  @override
-  String get gitMenuFetchPrune => 'Fetch (Prune)';
-
-  @override
-  String get gitMenuFetchDelete => 'Fetch (Delete)';
-
-  @override
-  String get gitMenuFetchAll => 'Fetch from All Remotes';
-
-  @override
-  String get gitMenuBranches => 'Branches';
-
-  @override
-  String get gitMenuRemotes => 'Remotes';
-
-  @override
-  String get gitMenuStash => 'Stash';
-
-  @override
-  String get gitMenuTags => 'Tags';
-
-  @override
-  String get gitMenuWorktree => 'Worktree';
-
-  @override
-  String get gitMenuShowOutput => 'Show Git Output';
-
-  @override
-  String get gitMenuNoRemote => 'There is no remote to work with.';
-
-  @override
-  String get gitMenuPickRemote => 'Pick a remote';
-
-  @override
-  String get gitMenuPickBranch => 'Pick a branch';
-
-  @override
-  String get gitMenuNewWorktree => 'Add Worktree';
-
-  @override
-  String get zmodemReceiving => 'Receiving';
-
-  @override
-  String get zmodemSending => 'Sending';
-
-  @override
-  String get zmodemChooseSave => 'Choose where to save…';
-
-  @override
-  String get zmodemChooseFiles => 'Choose files to send…';
-
-  @override
-  String get zmodemCancel => 'Cancel transfer';
 }

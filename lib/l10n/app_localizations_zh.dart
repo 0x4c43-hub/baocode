@@ -1398,9 +1398,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get menuView => '查看';
 
   @override
-  String get menuGit => 'Git';
-
-  @override
   String get menuHelp => '帮助';
 
   @override
@@ -1757,9 +1754,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get sidePanelSearchFiles => '搜索项目文本';
-
-  @override
-  String get sidePanelFindFile => '按文件名搜索文件';
 
   @override
   String get sidePanelCloseSearch => '关闭搜索';
@@ -7267,40 +7261,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get updateUnsupported => '此版本的 BaoCode 不支持自动更新。';
-
-  @override
-  String get sourceUpdateTitle => '源码更新';
-
-  @override
-  String get sourceUpdatePageDescription =>
-      'BaoCode 2 从源码更新：上游发布新版本后，在这里构建并安装。';
-
-  @override
-  String sourceUpdateUpToDate(String version) {
-    return '$version 已是最新：上游没有发布更新的版本。';
-  }
-
-  @override
-  String sourceUpdateAvailable(String version) {
-    return '上游已发布 $version，可以在后台构建。';
-  }
-
-  @override
-  String get sourceUpdateBuilding => '正在合并、测试并构建；完成后退出 BaoCode 2 即会安装。';
-
-  @override
-  String get sourceUpdateReady => '新版本已构建好，退出 BaoCode 2 后自动安装并重新打开。';
-
-  @override
-  String sourceUpdateFailed(String error) {
-    return '更新没有完成：$error';
-  }
-
-  @override
-  String get sourceUpdateUpdateNow => '立即更新';
-
-  @override
-  String get sourceUpdateLog => '查看日志';
 
   @override
   String updateManual(String reason) {
@@ -13843,97 +13803,4 @@ class AppLocalizationsZh extends AppLocalizations {
   String remoteBrowserReplace(String name) {
     return '“$name”已存在，要替换它吗？';
   }
-
-  @override
-  String get gitMenuSync => '同步';
-
-  @override
-  String get gitMenuClone => '克隆';
-
-  @override
-  String get gitMenuCheckout => '签出到…';
-
-  @override
-  String get gitMenuCommit => '提交';
-
-  @override
-  String get gitMenuCommitChanges => '提交更改…';
-
-  @override
-  String get gitMenuChanges => '更改';
-
-  @override
-  String get gitMenuUpdateProject => '更新项目';
-
-  @override
-  String get gitMenuPullPush => '拉取，推送';
-
-  @override
-  String get gitMenuPullRebase => '拉取（变基）';
-
-  @override
-  String get gitMenuPullFrom => '拉取自…';
-
-  @override
-  String get gitMenuPushForce => '推送（强制）';
-
-  @override
-  String get gitMenuPushTo => '推送到…';
-
-  @override
-  String get gitMenuPushToForce => '推送到…（强制）';
-
-  @override
-  String get gitMenuFetchPrune => '抓取（清理）';
-
-  @override
-  String get gitMenuFetchDelete => '抓取（删除）';
-
-  @override
-  String get gitMenuFetchAll => '从所有远程存储库中抓取';
-
-  @override
-  String get gitMenuBranches => '分支';
-
-  @override
-  String get gitMenuRemotes => '远程';
-
-  @override
-  String get gitMenuStash => '存储';
-
-  @override
-  String get gitMenuTags => '标记';
-
-  @override
-  String get gitMenuWorktree => '工作树';
-
-  @override
-  String get gitMenuShowOutput => '显示 GIT 输出';
-
-  @override
-  String get gitMenuNoRemote => '没有可用的远程仓库。';
-
-  @override
-  String get gitMenuPickRemote => '选择远程仓库';
-
-  @override
-  String get gitMenuPickBranch => '选择分支';
-
-  @override
-  String get gitMenuNewWorktree => '添加工作树';
-
-  @override
-  String get zmodemReceiving => '正在接收';
-
-  @override
-  String get zmodemSending => '正在发送';
-
-  @override
-  String get zmodemChooseSave => '选择保存位置…';
-
-  @override
-  String get zmodemChooseFiles => '选择要发送的文件…';
-
-  @override
-  String get zmodemCancel => '取消传输';
 }

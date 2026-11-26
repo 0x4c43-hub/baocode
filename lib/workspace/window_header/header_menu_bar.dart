@@ -6,6 +6,7 @@ import '../../chat/floating/floating_placement.dart';
 import '../../chat/floating/floating_registry.dart';
 import '../../chat/widgets/hover_builder.dart';
 import '../../l10n/l10n.dart';
+import '../../l10n/custom_strings.dart';
 import '../../sidebar/sidebar.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/codicons.dart';
@@ -139,7 +140,7 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
         onEnter: (_) => setState(() => _open = menu),
         child: _MenuRow(
           item: HeaderMenuItem(
-            menu.localizedLabel(context.l10n),
+            menu.localizedLabel(context.l10n, context.custom),
             onSelected: () {},
           ),
           selected: open,
@@ -196,7 +197,7 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
                           borderRadius: BorderRadius.circular(5),
                         ),
                   child: Text(
-                    menu.localizedLabel(context.l10n),
+                    menu.localizedLabel(context.l10n, context.custom),
                     style: TextStyle(
                       color:
                           colors[selected
@@ -215,8 +216,7 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
   }
 
   /// The menu's commands.
-  Widget _buildCommands(HeaderMenu menu) =>
-      _buildPanel(widget.items(menu));
+  Widget _buildCommands(HeaderMenu menu) => _buildPanel(widget.items(menu));
 
   /// A panel of entries, each command or a submenu that opens to its right.
   Widget _buildPanel(List<HeaderMenuItem> items, {bool nested = false}) {
@@ -244,10 +244,7 @@ class _HeaderMenuBarState extends State<HeaderMenuBar> {
               tapRegion: _tapRegion,
             )
           else
-            _MenuRow(
-              item: item,
-              onSelected: nested ? _selectNested : _select,
-            ),
+            _MenuRow(item: item, onSelected: nested ? _selectNested : _select),
       ],
     );
   }

@@ -7,6 +7,7 @@ import 'package:baocode/diagnostics/diagnostics_bundle.dart';
 import 'package:baocode/diagnostics/diagnostics_upload.dart';
 import 'package:baocode/ide/ide_button.dart';
 import 'package:baocode/ide/ide_input.dart';
+import 'package:baocode/l10n/custom_strings.dart';
 import 'package:baocode/l10n/l10n.dart';
 import 'package:baocode/settings/pages/settings_dropdown.dart';
 import 'package:baocode/settings/pages/updates_page.dart';
@@ -43,6 +44,7 @@ class _FakeDiagnostics extends DiagnosticsUploader {
 
 void main() {
   final l10n = englishLocalizations;
+  const custom = CustomStrings('en');
   late Directory data;
   late UserSettings settings;
 
@@ -83,23 +85,24 @@ void main() {
   testWidgets('the custom build shows the version upstream publishes', (
     tester,
   ) async {
-    final source = SourceUpdateController(
-      sourceDir: data.path,
-      logPath: p.join(data.path, 'update.log'),
-      autoUpdate: () => false,
-    )
-      ..localVersion = AppVersion.parse('2.0.6+39')
-      ..localCommit = 'abc1234'
-      ..upstreamVersion = AppVersion.parse('2.0.7+40')
-      ..status = SourceUpdateStatus.available
-      ..lastChecked = DateTime(2026, 11, 25, 10, 30);
+    final source =
+        SourceUpdateController(
+            sourceDir: data.path,
+            logPath: p.join(data.path, 'update.log'),
+            autoUpdate: () => false,
+          )
+          ..localVersion = AppVersion.parse('2.0.6+39')
+          ..localCommit = 'abc1234'
+          ..upstreamVersion = AppVersion.parse('2.0.7+40')
+          ..status = SourceUpdateStatus.available
+          ..lastChecked = DateTime(2026, 11, 25, 10, 30);
     addTearDown(source.dispose);
 
     await show(tester, UpdatesSettingsPage(source: source, settings: settings));
 
-    expect(find.text(l10n.sourceUpdateTitle), findsOneWidget);
-    expect(find.text(l10n.sourceUpdateAvailable('2.0.7+40')), findsOneWidget);
-    expect(button(l10n.sourceUpdateUpdateNow), findsOneWidget);
+    expect(find.text(custom.sourceUpdateTitle), findsOneWidget);
+    expect(find.text(custom.sourceUpdateAvailable('2.0.7+40')), findsOneWidget);
+    expect(button(custom.sourceUpdateUpdateNow), findsOneWidget);
     expect(find.textContaining('abc1234'), findsOneWidget);
   });
 
